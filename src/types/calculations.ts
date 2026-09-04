@@ -121,6 +121,16 @@ export interface ProductRouteResult {
   securityWarning?: string;
 }
 
+export type ProvenanceTag = 'FACT' | 'USER_ANSWER' | 'ASSUMPTION' | 'DERIVED';
+
+export interface ProvenanceItem {
+  id: string;
+  label: string;
+  value: string;
+  tag: ProvenanceTag;
+  explanation: string;
+}
+
 export interface CopilotOutput {
   lenderCapacity: LenderCapacityResult;
   safeCapacity: SafeCapacityResult;
@@ -129,4 +139,5 @@ export interface CopilotOutput {
   stress: StressResult;
   decision: DecisionResult;
   productRoute: ProductRouteResult;
+  provenanceSummary?: ProvenanceItem[];
 }

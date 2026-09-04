@@ -599,8 +599,13 @@ export default function ResultsDashboard({ profile, output: _output, personaName
               </div>
               <p className={`text-2xl font-extrabold ${isDontBorrow ? 'text-red-600' : 'text-[#065f46]'}`}>{formatLakhs(safeCapacity.recommendedAmount)}</p>
               <p className="text-xs text-[#71717a] mt-0.5">
-                Baseline at {defaultTenure}mo default · {isDontBorrow ? 'Math only — not a recommendation' : '← Use this number'}
+                Baseline at {defaultTenure}mo default · {isDontBorrow ? 'Mathematical capacity only — not a recommendation' : '← Use this number'}
               </p>
+              {isDontBorrow && (
+                <div className="mt-2 p-1.5 bg-red-100/70 border border-red-200 rounded text-[11px] font-bold text-red-700 text-center">
+                  Mathematical capacity only — not a recommendation.
+                </div>
+              )}
               {safeCapacity.safeAmountRange && (
                 <p className="text-xs text-[#52525b] mt-0.5">
                   Range: {formatLakhs(safeCapacity.safeAmountRange.low)}–{formatLakhs(safeCapacity.safeAmountRange.high)}
@@ -622,7 +627,7 @@ export default function ResultsDashboard({ profile, output: _output, personaName
           <div className="bg-[#faf7f2] rounded-xl p-3 border border-[#eae3d9] text-xs text-[#52525b] flex items-start gap-2">
             <span className="text-[#5a2045] font-bold shrink-0">Why two amounts:</span>
             <span>
-              Lender-Likely (<strong>{formatLakhs(lenderCapacity.lenderLikelyAmount)}</strong>) reflects the lender's gross FOIR formula ignoring your family living costs. Borrower-Safe (<strong>{formatLakhs(safeCapacity.recommendedAmount)}</strong>) is strictly based on your verified cash surplus after essentials.
+              Lender-Likely (<strong>{formatLakhs(lenderCapacity.lenderLikelyAmount)}</strong>) reflects the lender's gross FOIR formula ignoring your family living costs. Borrower-Safe (<strong>{formatLakhs(safeCapacity.recommendedAmount)}</strong>) is strictly based on your reported cash surplus after essentials.
             </span>
           </div>
 
@@ -758,13 +763,13 @@ export default function ResultsDashboard({ profile, output: _output, personaName
               <div>
                 <div className="flex items-center gap-2">
                   <span className="w-6 h-6 bg-[#065f46] text-white rounded-lg flex items-center justify-center text-xs font-bold">📈</span>
-                  <h3 className="text-base font-bold text-[#065f46]">Illustrative Investment Comparison</h3>
+                  <h3 className="text-base font-bold text-[#065f46]">Illustrative Opportunity-Cost Comparison</h3>
                 </div>
                 <p className="text-xs text-[#047857] mt-0.5">
-                  Optional illustration: What if you skip this debt and invest the monthly EMI into a disciplined SIP?
+                  At an assumed 12% annual return, what if you skip this debt and invest the monthly EMI into a disciplined SIP? Not guaranteed; market returns can be lower or negative.
                 </p>
                 <div className="mt-2 inline-flex items-center gap-1.5 bg-white text-[#065f46] text-[11px] font-medium px-2.5 py-1 rounded-md border border-[#a7f3d0]">
-                  <span>ℹ️</span> Assumed return: {sipReturnPct}% p.a. • This is an illustration, not a guaranteed investment return. Does not affect borrowing eligibility or loan limits.
+                  <span>ℹ️</span> Assumed return: {sipReturnPct}% p.a. • Illustrative Opportunity-Cost Comparison. Not guaranteed; market returns can be lower or negative. Does not affect borrowing eligibility or loan limits.
                 </div>
               </div>
             </div>
@@ -952,38 +957,76 @@ export default function ResultsDashboard({ profile, output: _output, personaName
             )}
           </div>
 
-          {/* Rule 5: What We Know vs. What We Assumed */}
-          <div className="bg-white rounded-xl border border-[#eae3d9] p-4 sm:p-5 shadow-xs text-xs">
-            <h3 className="text-sm font-bold text-[#18181b] mb-1 flex items-center gap-1.5">
-              <span>📋</span> What We Know vs. What We Assumed
-            </h3>
-            <p className="text-[#71717a] text-xs mb-3">
-              We base our calculations on your verified answers and explicitly document every financial assumption.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[#52525b]">
-              <div className="bg-[#faf7f2] p-3 rounded-lg border border-[#eae3d9]">
-                <p className="font-bold text-[#18181b] mb-1.5 flex items-center gap-1">
-                  <span>✓</span> Confirmed Facts (From You):
-                </p>
-                <ul className="space-y-1 text-[11px]">
-                  <li>• <strong>Income:</strong> {formatCurrency(profile.claimedTotalIncome, true)}/mo ({profile.incomeType === 'salaried' ? 'Salaried' : profile.incomeType === 'self_employed' ? 'Self-Employed' : 'Informal / Gig'})</li>
-                  <li>• <strong>Requested Loan:</strong> {formatLakhs(profile.requestedAmount)} for {profile.loanPurpose.replace(/_/g, ' ')}</li>
-                  <li>• <strong>Existing Debt:</strong> {formatCurrency(profile.existingEMI, true)}/mo declared EMIs</li>
-                  <li>• <strong>Repayment Track:</strong> {profile.repaymentHistory === 'clean' ? 'Clean repayment history' : profile.recentBounce ? 'Recent bounce noted' : 'Unspecified'}</li>
-                </ul>
-              </div>
-              <div className="bg-[#faf7f2] p-3 rounded-lg border border-[#eae3d9]">
-                <p className="font-bold text-[#18181b] mb-1.5 flex items-center gap-1">
-                  <span>ℹ️</span> Documented Assumptions:
-                </p>
-                <ul className="space-y-1 text-[11px]">
-                  <li>• <strong>Living Essentials:</strong> {profile.essentialExpensesIsDefaulted ? `Assumed at ${profile.incomeType === 'salaried' ? '50%' : '65%'} standard living benchmark` : `${formatCurrency(profile.essentialExpenses, true)}/mo (reported)`}</li>
-                  <li>• <strong>Fair Rate Ceiling:</strong> {fairRate.fairRateHigh.toFixed(1)}% p.a. used as conservative barrier for sizing safe principal</li>
-                  <li>• <strong>All-in Fees:</strong> ~{effectiveCost.processingFeePct}% processing fee amortized in effective annualized cost</li>
-                  <li>• <strong>High-Cost Debt:</strong> {profile.highCostDebtEMIIsDefaulted ? 'Monthly payment assumed at 25% of outstanding balance' : 'None / Confirmed'}</li>
-                </ul>
+          {/* Rule 5: What We Know vs. What We Assumed & Provenance */}
+          <div className="bg-white rounded-xl border border-[#eae3d9] p-4 sm:p-5 shadow-xs text-xs space-y-4">
+            <div>
+              <h3 className="text-sm font-bold text-[#18181b] mb-1 flex items-center gap-1.5">
+                <span>📋</span> What We Know vs. What We Assumed
+              </h3>
+              <p className="text-[#71717a] text-xs mb-3">
+                We base our calculations on your reported inputs and documented records, and explicitly disclose every financial assumption.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[#52525b]">
+                <div className="bg-[#faf7f2] p-3 rounded-lg border border-[#eae3d9]">
+                  <p className="font-bold text-[#18181b] mb-1.5 flex items-center gap-1">
+                    <span>✓</span> Confirmed Facts &amp; Inputs (From You):
+                  </p>
+                  <ul className="space-y-1 text-[11px]">
+                    <li>• <strong>Income:</strong> {formatCurrency(profile.claimedTotalIncome, true)}/mo ({profile.incomeType === 'salaried' ? 'Salaried' : profile.incomeType === 'self_employed' ? 'Self-Employed' : 'Informal / Gig'})</li>
+                    <li>• <strong>Requested Loan:</strong> {formatLakhs(profile.requestedAmount)} for {profile.loanPurpose.replace(/_/g, ' ')}</li>
+                    <li>• <strong>Existing Debt:</strong> {formatCurrency(profile.existingEMI, true)}/mo declared EMIs</li>
+                    <li>• <strong>Repayment Track:</strong> {profile.repaymentHistory === 'clean' ? 'Clean repayment history' : profile.recentBounce ? 'Recent bounce noted' : 'Unspecified (no clean record inferred)'}</li>
+                  </ul>
+                </div>
+                <div className="bg-[#faf7f2] p-3 rounded-lg border border-[#eae3d9]">
+                  <p className="font-bold text-[#18181b] mb-1.5 flex items-center gap-1">
+                    <span>ℹ️</span> Documented Assumptions:
+                  </p>
+                  <ul className="space-y-1 text-[11px]">
+                    <li>• <strong>Living Essentials:</strong> {profile.essentialExpensesIsDefaulted ? `Assumed at ${profile.incomeType === 'salaried' ? '50%' : '65%'} standard living benchmark` : `${formatCurrency(profile.essentialExpenses, true)}/mo (reported)`}</li>
+                    <li>• <strong>Fair Rate Ceiling:</strong> {fairRate.fairRateHigh.toFixed(1)}% p.a. used as conservative barrier for sizing safe principal</li>
+                    <li>• <strong>All-in Fees:</strong> ~{effectiveCost.processingFeePct}% processing fee amortized in effective annualized cost</li>
+                    <li>• <strong>High-Cost Debt:</strong> {profile.highCostDebtEMIIsDefaulted ? 'Monthly payment assumed at 25% of outstanding balance' : 'None / Confirmed'}</li>
+                  </ul>
+                </div>
               </div>
             </div>
+
+            {/* Provenance Audit Table */}
+            {output.provenanceSummary && output.provenanceSummary.length > 0 && (
+              <div className="pt-3 border-t border-[#eae3d9]">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-bold text-[#18181b] text-xs">Number Provenance &amp; Lineage:</span>
+                  <span className="text-[10px] text-[#71717a]">Section 8 Compliance</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                  {output.provenanceSummary.slice(0, 8).map(item => (
+                    <div key={item.id} className="p-2 rounded-lg bg-[#faf7f2] border border-[#eae3d9] flex flex-col justify-between">
+                      <div className="flex items-center justify-between gap-1 mb-1">
+                        <span className="font-semibold text-[#18181b] truncate">{item.label}</span>
+                        <span
+                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wider uppercase shrink-0 ${
+                            item.tag === 'USER_ANSWER'
+                              ? 'bg-blue-100 text-blue-800'
+                              : item.tag === 'ASSUMPTION'
+                              ? 'bg-amber-100 text-amber-800'
+                              : item.tag === 'DERIVED'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-purple-100 text-purple-800'
+                          }`}
+                        >
+                          {item.tag}
+                        </span>
+                      </div>
+                      <div className="flex items-baseline justify-between text-xs font-bold text-[#5a2045]">
+                        <span>{item.value}</span>
+                      </div>
+                      <p className="text-[10px] text-[#71717a] mt-1 leading-tight">{item.explanation}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* CTA */}

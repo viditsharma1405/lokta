@@ -106,10 +106,10 @@ export const PERSONA_RAVI: BorrowerProfile = {
   incomeStability: 'stable',
   documentationStatus: 'partial',        // ITR exists but below claimed cash
 
-  // Household — Ravi confirms his wife will be a formal co-applicant per Stage 2.5 rule
+  // Household — Demo assumption: spouse is treated as a co-applicant.
   dependents: 0,
   hasOtherEarner: true,                  // wife earns ₹18,000
-  coApplicantIncome: 18000,              // FACT (Lokta): Ravi explicitly confirms his wife will be a co-applicant on the loan
+  coApplicantIncome: 18000,              // Demo assumption: spouse is treated as a co-applicant.
   emergencySavingsMonths: null,          // genuinely unknown
   upcomingLargeExpense: false,
 

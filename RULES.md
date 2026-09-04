@@ -1,7 +1,15 @@
 # RULES.md — Lokta Borrower Copilot
 
-> Every rule in this file has a **source** and an **impact declaration**.
+> Every rule in this file has a **Value**, **Why**, **Source / My judgement**, and an **Impact declaration**.
 > Changes here must be reflected in `src/rules/constants.ts`, and vice versa.
+
+### Rule Provenance Taxonomy
+All rules, thresholds, and numbers in this specification fall into five distinct categories:
+1. **External fact**: Observable regulatory mandates or published market observations (e.g. RBI Master Directions, bank benchmark rate cards).
+2. **Assignment-derived**: Direct requirements or test thresholds specified in the assignment prompt (e.g. income shock −20%, rate shock +2pp).
+3. **Mathematical identity**: Standard financial engineering and arithmetic formulas (e.g. standard EMI annuity factor, bisection IRR root-finding).
+4. **Product judgement**: Design and risk-positioning heuristics chosen for a borrower-side copilot (e.g. 50%/40%/35% base retention, undocumented tiered haircuts). **Not** regulatory mandates.
+5. **User input**: Information provided directly by the borrower (e.g. claimed income, purpose, declared obligations).
 
 ---
 
@@ -226,18 +234,23 @@ recommendedAmount = principalFromEMI(recommendedEMI, fairRateCeiling, defaultTen
 
 ## 8. Fair Rate (Position Model)
 
-### Base Rate Bands
+### Base Rate Bands (Market Benchmarks)
 
-| Product | Bank Tier | NBFC Tier | Source |
-|---------|-----------|-----------|--------|
-| Personal Loan | 10%–16% | 16%–30% | External fact (market research) |
-| Home Loan | 8.5%–10.5% | 10.5%–14% | External fact |
-| LAP | 9.5%–15% | 15%–20% | External fact |
-| Gold Loan | 7%–12% | 12%–26% | External fact |
-| Two-Wheeler | 9%–14% | 14%–22% | External fact |
-| Business Loan | 11%–17% | 17%–28% | External fact (weakest-sourced) |
+> **Important Disclosure on Rate Data**: These market bands reflect observed Indian retail lending ranges as of **Q1 2026**. They are market benchmarks used for educational self-assessment and borrower negotiation, **not** guaranteed lender quotes. Actual quotes depend on individual lender underwriting, risk-based pricing matrices, and bureau checks.
 
-**Tier selection**: Bank tier if credit score ≥ 700 OR (thin-file + long tenure + collateral). NBFC tier otherwise.
+| Product | Bank Tier | NBFC Tier | Named Sources Checked | Date Checked | Classification & Sourcing Quality |
+|---------|-----------|-----------|-----------------------|--------------|-----------------------------------|
+| **Personal Loan** (Unsecured) | 10.0%–16.0% | 16.0%–30.0% | SBI (Xpress Credit ~10.9%), HDFC Bank (~10.75%–15%), Bajaj Finance (~13%–28%), Tata Capital | Q1 2026 | **Market observation** (High confidence; widely published benchmark rates across aggregators) |
+| **Home Loan** (Secured) | 8.5%–10.5% | 10.5%–14.0% | SBI Regular Home Loan (EBLR linked ~8.50%–9.65%), HDFC Bank (~8.70%–9.80%), LIC Housing Finance (~9.5%–10.9%) | Q1 2026 | **Market observation** (High confidence; RBI repo-rate linked transparent benchmarks) |
+| **Loan Against Property (LAP)** | 9.5%–15.0% | 15.0%–20.0% | SBI LAP (~9.85%–11.5%), ICICI Bank LAP (~10.25%–12.5%), Bajaj Finserv LAP (~11%–16%), Poonawalla Fincorp | Q1 2026 | **Market observation** (Medium confidence; depends heavily on collateral property type and title) |
+| **Gold Loan** (Secured) | 7.0%–12.0% | 12.0%–26.0% | State Bank of India (~8.65%–9.5%), Bank of Baroda (~8.85%), Muthoot Finance (~11.9%–24%), Manappuram (~12%–26%) | Q1 2026 | **Market observation** (Medium/High confidence; NBFC gold rates carry tiered schemes based on LTV) |
+| **Two-Wheeler Loan** | 9.0%–14.0% | 14.0%–22.0% | HDFC Bank Two-Wheeler (~9.9%–14.5%), TVS Credit (~14%–20%), Hero FinCorp (~15%–22%) | Q1 2026 | **Market observation** (Medium confidence; NBFC captive financiers dominate subvented dealership offers) |
+| **Business Loan** (Unsecured MSME) | 11.0%–17.0% | 17.0%–28.0% | HDFC Bank Business Growth Loan (~11.9%–16.5%), Axis Bank, Lendingkart (~18%–27%), Bajaj Finserv | Q1 2026 | **Market observation (Weakest-sourced)**; highly customized to GST turnover, vintage, and balance sheet quality |
+
+**Tier selection rule**:
+- **Bank tier**: Selected if credit score ≥ 700 OR (thin-file borrower + established tenure ≥3yr + unencumbered property/gold collateral).
+- **NBFC tier**: Selected otherwise (scores 650–699, subprime <650, or uncollateralized thin-file).
+- **Classification**: *Product judgement* applied deterministically for conservative negotiation positioning.
 
 ### Position Adjustments (0–100 scale, starting at 50)
 

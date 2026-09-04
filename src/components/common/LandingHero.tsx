@@ -36,7 +36,7 @@ export default function LandingHero({ onStart, onLoadPersona }: LandingHeroProps
           </button>
         </div>
         <p className="text-xs text-[#71717a] px-2">
-          ⚡ ~8 core questions · Takes under 2 minutes · Works offline
+          ⚡ Quick borrower assessment · A few core questions + only the follow-ups that matter · Works offline
         </p>
       </div>
 

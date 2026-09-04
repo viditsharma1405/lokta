@@ -1,12 +1,34 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import type { Answers } from '../../questions/questionEngine';
 import {
-  MUST_QUESTIONS,
-  HIGH_COST_DEBT_QUESTIONS,
-  SALARIED_QUESTIONS,
-  SELF_EMPLOYED_QUESTIONS,
-  INFORMAL_QUESTIONS,
-  CROSS_CUTTING_QUESTIONS,
+  Q_INCOME_TYPE,
+  Q_MONTHLY_INCOME,
+  Q_INCOME_STABILITY,
+  Q_LOAN_PURPOSE,
+  Q_REQUESTED_AMOUNT,
+  Q_EXISTING_EMI,
+  Q_ESSENTIAL_EXPENSES,
+  EXPENSE_BUCKET_QUESTION,
+  Q_HIGH_COST_DEBT,
+  Q_HIGH_COST_DEBT_AMOUNT,
+  Q_HIGH_COST_DEBT_MONTHLY,
+  Q_RECENT_BOUNCE,
+  Q_CREDIT_SCORE,
+  Q_EMPLOYMENT_TENURE,
+  Q_VARIABLE_INCOME_SHARE,
+  Q_BUSINESS_TENURE,
+  Q_DOCUMENTED_INCOME_SE,
+  Q_DOCUMENTED_INCOME_ITR,
+  Q_INFORMAL_RECORDS,
+  Q_INFORMAL_SUPPORTED_AMOUNT,
+  Q_COLLATERAL_AVAILABLE,
+  Q_COLLATERAL_VALUE,
+  Q_CO_APPLICANT,
+  Q_CO_APPLICANT_INCOME,
+  Q_DEPENDENTS,
+  Q_OTHER_EARNER,
+  Q_EMERGENCY_SAVINGS,
+  Q_UPCOMING_LARGE_EXPENSE,
   DOCUMENTED_MONTHLY_INCOME_QUESTION,
   type QuestionDef,
 } from '../../questions/questionDefs';
@@ -192,14 +214,8 @@ function QuestionCard({
 type StreamlinedStep = 1 | 2 | 3;
 
 export default function Questionnaire({ onComplete }: QuestionnaireProps) {
-  const [answers, setAnswers] = useState<Answers>({
-    income_type: 'salaried',
-    income_stability: 'stable',
-    variable_income_share: 0,
-    high_cost_debt: 'none',
-    recent_bounce: 'no',
-    existing_emi: 0,
-  });
+  // Clean initial state — zero un-provided facts are pre-assumed
+  const [answers, setAnswers] = useState<Answers>({});
   const [step, setStep] = useState<StreamlinedStep>(1);
   const topRef = useRef<HTMLDivElement>(null);
 
@@ -211,88 +227,171 @@ export default function Questionnaire({ onComplete }: QuestionnaireProps) {
   const setValue = (id: string, val: string | number | null) => {
     setAnswers(prev => {
       const updated = { ...prev, [id]: val };
-      if (id === 'income_stability') {
-        if (val === 'stable') {
-          updated.variable_income_share = 0;
-        } else if (val === 'moderate' && (!prev.variable_income_share || Number(prev.variable_income_share) === 0)) {
-          updated.variable_income_share = 15;
-        } else if (val === 'unstable' && (!prev.variable_income_share || Number(prev.variable_income_share) === 0)) {
-          updated.variable_income_share = 50;
-        }
-      }
       if (id === 'income_type') {
+        // If income type changes, clear type-specific answers
         if (val === 'salaried') {
-          updated.income_stability = 'stable';
-          updated.variable_income_share = 0;
+          delete updated.business_tenure;
+          delete updated.collateral_available;
+          delete updated.collateral_value;
+          delete updated.documented_income_itr;
         } else if (val === 'self_employed') {
-          updated.income_stability_biz = 'stable';
+          delete updated.employment_tenure;
+          delete updated.variable_income_share;
         } else if (val === 'informal') {
-          updated.income_stability_informal = 'stable';
+          delete updated.business_tenure;
+          delete updated.employment_tenure;
+          delete updated.documented_income_itr;
+          delete updated.collateral_available;
+          delete updated.collateral_value;
         }
       }
       return updated;
     });
   };
 
-  const hasHighCostDebt = String(answers.high_cost_debt ?? '') === 'has_debt';
   const monthlyIncomeNum = Number(answers.monthly_income ?? 0);
 
-  // Step 1: Core Income & Loan Intent (Adaptive based on income type)
+  // ── Step 1 Questions: Core Income & Need + Adaptive Branches ───────────────
   const step1Questions = useMemo(() => {
+    const list: QuestionDef[] = [Q_INCOME_TYPE];
+
+    // Branch A: Salaried tenure
+    if (answers.income_type === 'salaried') {
+      list.push(Q_EMPLOYMENT_TENURE);
+    }
+
+    // Branch B: Self-employed business tenure
+    if (answers.income_type === 'self_employed') {
+      list.push(Q_BUSINESS_TENURE);
+    }
+
+    // Core Income & Stability
+    list.push(Q_MONTHLY_INCOME);
+    list.push(Q_INCOME_STABILITY);
+
+    // Variable pay follow-up if salaried with fluctuating earnings
+    if (
+      answers.income_type === 'salaried' &&
+      (answers.income_stability === 'moderate' || answers.income_stability === 'unstable')
+    ) {
+      list.push(Q_VARIABLE_INCOME_SHARE);
+    }
+
+    // Loan purpose & amount
+    list.push(Q_LOAN_PURPOSE);
+    list.push(Q_REQUESTED_AMOUNT);
+
+    // Branch E: Business Purpose Collateral (Unlocks LAP/Gold routing)
+    if (
+      answers.income_type === 'self_employed' &&
+      (answers.loan_purpose === 'business_expansion' ||
+        answers.loan_purpose === 'vehicle' ||
+        answers.loan_purpose === 'other')
+    ) {
+      list.push(Q_COLLATERAL_AVAILABLE);
+
+      const col = answers.collateral_available;
+      if (col === 'property_commercial' || col === 'property_residential' || col === 'gold') {
+        list.push(Q_COLLATERAL_VALUE);
+      }
+    }
+
+    return list;
+  }, [
+    answers.income_type,
+    answers.income_stability,
+    answers.loan_purpose,
+    answers.collateral_available,
+  ]);
+
+  // ── Step 2 Questions: Cash Flow & Existing Debt ────────────────────────────
+  const step2Questions = useMemo(() => {
     const list: QuestionDef[] = [
-      MUST_QUESTIONS[0], // income_type
-      MUST_QUESTIONS[1], // monthly_income
+      Q_EXISTING_EMI,
+      Q_ESSENTIAL_EXPENSES,
     ];
 
-    if (answers.income_type === 'salaried') {
-      const qStability = SALARIED_QUESTIONS.find(q => q.id === 'income_stability');
-      if (qStability) list.push(qStability);
-
-      if (answers.income_stability === 'moderate' || answers.income_stability === 'unstable') {
-        const qVarShare = SALARIED_QUESTIONS.find(q => q.id === 'variable_income_share');
-        if (qVarShare) list.push(qVarShare);
-      }
-    } else if (answers.income_type === 'self_employed') {
-      const qBizStability = SELF_EMPLOYED_QUESTIONS.find(q => q.id === 'income_stability_biz');
-      if (qBizStability) list.push(qBizStability);
-    } else if (answers.income_type === 'informal') {
-      const qInfStability = INFORMAL_QUESTIONS.find(q => q.id === 'income_stability_informal');
-      if (qInfStability) list.push(qInfStability);
+    // Coarse bucket follow-up if expenses are unknown
+    if (answers.essential_expenses === 'unknown') {
+      list.push(EXPENSE_BUCKET_QUESTION);
     }
 
-    list.push(MUST_QUESTIONS[2]); // loan_purpose
-    list.push(MUST_QUESTIONS[3]); // requested_amount
+    list.push(Q_HIGH_COST_DEBT);
+
+    // Follow-ups if high-cost debt is reported
+    if (answers.high_cost_debt === 'has_debt') {
+      list.push(Q_HIGH_COST_DEBT_AMOUNT);
+      list.push(Q_HIGH_COST_DEBT_MONTHLY);
+    }
+
+    list.push(Q_RECENT_BOUNCE);
 
     return list;
-  }, [answers.income_type, answers.income_stability]);
+  }, [answers.essential_expenses, answers.high_cost_debt]);
 
-  // Step 2: Cash Flow & Risk Check (4 questions + conditional high-cost debt inline)
-  const step2Questions = useMemo(() => [
-    MUST_QUESTIONS[4], // existing_emi
-    MUST_QUESTIONS[5], // essential_expenses
-    MUST_QUESTIONS[6], // high_cost_debt
-    MUST_QUESTIONS[7], // recent_bounce
-  ], []);
-
-  // Step 3 (Optional): Sharpening rate position and safety margin (3 questions + adaptive documentation)
+  // ── Step 3 Questions: Risk Profile, Household & Fine-Tuning ────────────────
   const step3Questions = useMemo(() => {
-    const qCredit = SALARIED_QUESTIONS.find(q => q.id === 'credit_score');
-    const qSavings = CROSS_CUTTING_QUESTIONS.find(q => q.id === 'emergency_savings');
-    const qDocs = answers.income_type === 'self_employed'
-      ? (SELF_EMPLOYED_QUESTIONS.find(q => q.id === 'documentation_status') ?? SALARIED_QUESTIONS.find(q => q.id === 'documentation_status'))
-      : answers.income_type === 'informal'
-      ? INFORMAL_QUESTIONS.find(q => q.id === 'documentation_status')
-      : SALARIED_QUESTIONS.find(q => q.id === 'documentation_status');
-    const list: QuestionDef[] = [qCredit, qSavings, qDocs].filter((q): q is QuestionDef => Boolean(q));
+    const list: QuestionDef[] = [Q_CREDIT_SCORE];
 
-    if (answers.income_type === 'self_employed' && (answers.documentation_status === 'partial' || answers.documentation_status === 'full')) {
-      const qItr = SELF_EMPLOYED_QUESTIONS.find(q => q.id === 'documented_income_itr');
-      if (qItr) list.push(qItr);
-    } else if (answers.income_type !== 'self_employed' && answers.documentation_status === 'partial') {
-      list.push(DOCUMENTED_MONTHLY_INCOME_QUESTION);
+    // Adaptive documentation questions by borrower segment
+    if (answers.income_type === 'self_employed') {
+      list.push(Q_DOCUMENTED_INCOME_SE);
+      list.push(Q_DOCUMENTED_INCOME_ITR);
+    } else if (answers.income_type === 'informal') {
+      list.push(Q_INFORMAL_RECORDS);
+      if (answers.documentation_status === 'partial') {
+        list.push(Q_INFORMAL_SUPPORTED_AMOUNT);
+      }
+    } else {
+      // Salaried documentation status
+      const qDocSalary: QuestionDef = {
+        id: 'documentation_status',
+        label: 'What income documentation can you provide?',
+        helpText: 'Payslips, Form 16, and bank salary credits.',
+        whyWeAsk: 'Full documentation confirms your income at 100% value without any underwriting haircut.',
+        type: 'select',
+        options: [
+          { value: 'full', label: 'Salary slips + Bank statements + Form 16 / ITR all available' },
+          { value: 'partial', label: 'Bank credits available, but no formal salary slips' },
+          { value: 'none', label: 'Cash salary / No formal documentation' },
+        ],
+        allowUnknown: true,
+        unknownLabel: 'Not sure what I have',
+        affects: ['lenderCapacity', 'fairRate'],
+        reason: 'Documented income receives full recognition.',
+        group: 'credit',
+      };
+      list.push(qDocSalary);
+      if (answers.documentation_status === 'partial') {
+        list.push(DOCUMENTED_MONTHLY_INCOME_QUESTION);
+      }
     }
+
+    // Co-applicant confirmation and income
+    list.push(Q_CO_APPLICANT);
+    if (answers.co_applicant === 'yes') {
+      list.push(Q_CO_APPLICANT_INCOME);
+    }
+
+    // Dependents and other earner
+    list.push(Q_DEPENDENTS);
+    if (Number(answers.dependents ?? 0) > 2) {
+      list.push(Q_OTHER_EARNER);
+    }
+
+    // Emergency savings buffer
+    list.push(Q_EMERGENCY_SAVINGS);
+
+    // Upcoming large expense
+    list.push(Q_UPCOMING_LARGE_EXPENSE);
+
     return list;
-  }, [answers.income_type, answers.documentation_status]);
+  }, [
+    answers.income_type,
+    answers.documentation_status,
+    answers.co_applicant,
+    answers.dependents,
+  ]);
 
   const canAdvanceStep1 = () => {
     return Boolean(
@@ -303,8 +402,13 @@ export default function Questionnaire({ onComplete }: QuestionnaireProps) {
     );
   };
 
-  const canFinish = () => {
-    return canAdvanceStep1();
+  const canAdvanceStep2 = () => {
+    return (
+      answers.existing_emi !== undefined &&
+      answers.essential_expenses !== undefined &&
+      answers.high_cost_debt !== undefined &&
+      answers.recent_bounce !== undefined
+    );
   };
 
   const handleFinish = () => {
@@ -313,17 +417,16 @@ export default function Questionnaire({ onComplete }: QuestionnaireProps) {
 
   return (
     <div ref={topRef} className="max-w-2xl mx-auto pb-12">
-      {/* Header */}
+      {/* Header — Section 30 compliant */}
       <div className="mb-6 text-center">
+        <div className="inline-flex items-center gap-1.5 bg-[#faf4f8] text-[#5a2045] text-xs font-semibold px-3 py-1 rounded-full border border-[#e8d0e0] mb-2">
+          <span>⚡ Adaptive Borrower Copilot</span>
+        </div>
         <h2 className="text-2xl sm:text-3xl font-extrabold text-[#18181b]">
-          {step === 1 && 'Step 1: Income & Loan Need'}
-          {step === 2 && 'Step 2: Monthly Cash Flow & Debt'}
-          {step === 3 && 'Step 3: Fine-Tune Rates (Optional)'}
+          Quick borrower assessment
         </h2>
-        <p className="text-xs sm:text-sm text-[#71717a] mt-1">
-          {step === 1 && 'Tell us what you earn and what you are looking to borrow.'}
-          {step === 2 && 'Check your existing obligations to see your safe room.'}
-          {step === 3 && 'Confidence widens with silence: Fewer answers mean a wider, more conservative rate band. Skip anytime or answer to sharpen.'}
+        <p className="text-xs sm:text-sm text-[#71717a] mt-1.5 max-w-lg mx-auto">
+          We'll ask a few core questions, then only the follow-ups that matter for your situation.
         </p>
 
         {/* Progress Bar */}
@@ -335,35 +438,35 @@ export default function Questionnaire({ onComplete }: QuestionnaireProps) {
         </div>
         <div className="flex justify-between text-[11px] sm:text-xs text-[#71717a] mt-1.5 px-1 font-medium">
           <span className={step >= 1 ? 'text-[#5a2045] font-bold' : ''}>
-            <span className="hidden sm:inline">1. Basic Need</span>
+            <span className="hidden sm:inline">1. Income & Needs</span>
             <span className="sm:hidden">1. Need</span>
           </span>
           <span className={step >= 2 ? 'text-[#5a2045] font-bold' : ''}>
-            <span className="hidden sm:inline">2. Cash Flow</span>
+            <span className="hidden sm:inline">2. Cash Flow & Debt</span>
             <span className="sm:hidden">2. Cash Flow</span>
           </span>
           <span className={step === 3 ? 'text-[#5a2045] font-bold' : ''}>
-            <span className="hidden sm:inline">3. Rate Tune (Optional)</span>
+            <span className="hidden sm:inline">3. Household & Buffers (Optional)</span>
             <span className="sm:hidden">3. Fine-Tune</span>
           </span>
         </div>
 
-        {/* Rule 1: Adaptive Flow Indicator */}
+        {/* Dynamic Branch Indicator */}
         {answers.income_type && (
           <div className="mt-3 inline-flex items-center gap-1.5 bg-[#faf4f8] text-[#5a2045] text-[11px] font-medium px-3 py-1 rounded-full border border-[#e8d0e0]">
-            <span>⚡ Adaptive stream:</span>
+            <span>⚡ Adaptive branch active:</span>
             <span>
               {answers.income_type === 'salaried'
-                ? 'Salaried flow active — business tenure & ITR questions skipped.'
+                ? 'Salaried stream — corporate payroll standards; business vintage & ITR skipped.'
                 : answers.income_type === 'self_employed'
-                ? 'Business owner flow active — corporate employment questions skipped.'
-                : 'Informal/gig flow active — formal corporate documentation skipped.'}
+                ? 'Business owner stream — business vintage, collateral (LAP), and ITR enabled.'
+                : 'Informal/gig stream — digital receipts & bank credits enabled; ITR skipped.'}
             </span>
           </div>
         )}
       </div>
 
-      {/* Step 1 Questions */}
+      {/* Step 1: Core Income & Need */}
       {step === 1 && (
         <div className="space-y-4">
           {step1Questions.map(q => (
@@ -392,7 +495,7 @@ export default function Questionnaire({ onComplete }: QuestionnaireProps) {
         </div>
       )}
 
-      {/* Step 2 Questions */}
+      {/* Step 2: Cash Flow & Existing Obligations */}
       {step === 2 && (
         <div className="space-y-4">
           {step2Questions.map(q => {
@@ -417,23 +520,6 @@ export default function Questionnaire({ onComplete }: QuestionnaireProps) {
                   quickFillLabel={quickLabel}
                   onQuickFill={quickAction}
                 />
-
-                {/* Inline Follow-up if high cost debt is selected */}
-                {q.id === 'high_cost_debt' && hasHighCostDebt && (
-                  <div className="bg-[#fffbeb] rounded-xl p-4 border border-[#fde68a] space-y-3 ml-2 sm:ml-4">
-                    <p className="text-xs font-bold text-amber-800 uppercase tracking-wide">
-                      ⚠ High-Cost Debt Details
-                    </p>
-                    {HIGH_COST_DEBT_QUESTIONS.map(hcdQ => (
-                      <QuestionCard
-                        key={hcdQ.id}
-                        question={hcdQ}
-                        value={answers[hcdQ.id]}
-                        onChange={val => setValue(hcdQ.id, val)}
-                      />
-                    ))}
-                  </div>
-                )}
               </div>
             );
           })}
@@ -449,22 +535,26 @@ export default function Questionnaire({ onComplete }: QuestionnaireProps) {
                 ← Back
               </button>
 
-              {/* Primary Next Step Button (Fine-Tune) */}
               <button
                 type="button"
                 onClick={() => setStep(3)}
-                className="w-full sm:flex-1 py-3.5 px-6 rounded-xl text-sm sm:text-base font-bold text-white bg-[#5a2045] hover:bg-[#4b1a39] shadow-xs transition-all text-center cursor-pointer"
+                disabled={!canAdvanceStep2()}
+                className={`w-full sm:flex-1 py-3.5 px-6 rounded-xl text-sm sm:text-base font-bold shadow-xs transition-all text-center cursor-pointer ${
+                  canAdvanceStep2()
+                    ? 'text-white bg-[#5a2045] hover:bg-[#4b1a39]'
+                    : 'bg-[#eae3d9] text-[#a1a1aa] cursor-not-allowed shadow-none'
+                }`}
               >
-                Continue to Fine-Tune (Credit & Savings) →
+                Continue to Household & Buffers →
               </button>
             </div>
 
-            {/* Unhighlighted Small Skip Link */}
+            {/* Skip Link to See Immediate Results */}
             <div className="text-center pt-1">
               <button
                 type="button"
                 onClick={handleFinish}
-                disabled={!canFinish()}
+                disabled={!canAdvanceStep1()}
                 className="text-xs text-[#71717a] hover:text-[#5a2045] font-medium underline underline-offset-2 transition-colors cursor-pointer"
               >
                 Skip fine-tuning and see results now (⚡ Ready) →
@@ -474,11 +564,11 @@ export default function Questionnaire({ onComplete }: QuestionnaireProps) {
         </div>
       )}
 
-      {/* Step 3 Questions (Optional) */}
+      {/* Step 3: Household, Risk & Fine-Tuning */}
       {step === 3 && (
         <div className="space-y-4">
           <div className="bg-[#faf4f8] border border-[#e8d0e0] rounded-xl p-3.5 text-xs text-[#5a2045] leading-relaxed">
-            💡 <strong>These 3 questions are completely optional.</strong> You can answer them to refine your rate band and buffer, or skip straight to your results.
+            💡 <strong>These follow-ups sharpen your calculation.</strong> Any skipped answers will be treated as unknown, which broadens your uncertainty band without penalizing you with manufactured assumptions.
           </div>
 
           {step3Questions.map(q => (

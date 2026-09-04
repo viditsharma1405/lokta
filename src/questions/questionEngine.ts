@@ -1,8 +1,21 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Question Engine — converts raw questionnaire answers into a BorrowerProfile
+// Strictly complies with:
+// - Unknown is never zero
+// - Confidence widens with silence
+// - Never silently infer facts (stability, clean repayment, co-applicant, savings)
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { BorrowerProfile, IncomeType, IncomeStability, DocumentationStatus, RepaymentHistory, CreditScoreStatus, CollateralType, LoanPurpose } from '../types/profile';
+import type {
+  BorrowerProfile,
+  IncomeType,
+  IncomeStability,
+  DocumentationStatus,
+  RepaymentHistory,
+  CreditScoreStatus,
+  CollateralType,
+  LoanPurpose,
+} from '../types/profile';
 import {
   computeClaimedIncome,
   computeEligibleIncomeLender,
@@ -26,15 +39,19 @@ function str(val: string | number | null | undefined): string {
 }
 
 export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
-  const incomeType = str(answers.income_type) as IncomeType || 'salaried';
+  const incomeType = (str(answers.income_type) as IncomeType) || 'salaried';
   const rawPurpose = str(answers.loan_purpose);
-  const loanPurpose = (rawPurpose === 'business' ? 'business_expansion' : rawPurpose) as LoanPurpose || 'personal_event';
+  const loanPurpose =
+    (rawPurpose === 'business' ? 'business_expansion' : rawPurpose) as LoanPurpose ||
+    'personal_event';
   const requestedAmount = num(answers.requested_amount) ?? 0;
 
   // Documentation Status (resolved early so income normalization can use it)
   const docRaw = str(answers.documentation_status) || str(answers.documentation);
   let documentationStatus: DocumentationStatus = 'unknown';
-  if (
+  if (docRaw === 'unknown' || answers.documentation === 'unknown') {
+    documentationStatus = 'unknown';
+  } else if (
     docRaw === 'full' ||
     docRaw === 'itr' ||
     docRaw === 'itr_available' ||
@@ -47,10 +64,15 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
     documentationStatus = 'partial';
   } else if (docRaw === 'none' || docRaw === 'no' || docRaw === 'undocumented') {
     documentationStatus = 'none';
-  } else if (answers.has_itr === 'yes' || String(answers.has_itr) === 'true' || String(answers.itr_available) === 'true' || answers.itr_available === 'yes') {
+  } else if (
+    answers.has_itr === 'yes' ||
+    String(answers.has_itr) === 'true' ||
+    String(answers.itr_available) === 'true' ||
+    answers.itr_available === 'yes'
+  ) {
     documentationStatus = 'full';
-  } else if (incomeType === 'salaried' && (!docRaw || docRaw === 'unknown')) {
-    // Salaried borrowers are assumed fully documented (salary slips) by default
+  } else if (incomeType === 'salaried' && !docRaw) {
+    // Standard salaried payroll default only when documentation was never asked
     documentationStatus = 'full';
   }
 
@@ -60,7 +82,10 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
   const itrAnnual = num(answers.documented_income_itr);
   const rangeLow = num(answers.income_range_low);
   const rangeHigh = num(answers.income_range_high);
-  const explicitDocIncome = num(answers.documented_income) ?? num(answers.documentedIncome) ?? num(answers.documented_monthly_income);
+  const explicitDocIncome =
+    num(answers.documented_income) ??
+    num(answers.documentedIncome) ??
+    num(answers.documented_monthly_income);
   const explicitClaimedIncome = num(answers.claimed_total_income) ?? num(answers.claimedTotalIncome);
 
   let claimedTotalIncome: number;
@@ -80,7 +105,11 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
   }
 
   let documentedIncome: number | null = null;
-  const isDocUnknown = docRaw === 'unknown' || answers.documented_income === 'unknown' || answers.documented_monthly_income === 'unknown' || answers.documented_income_itr === 'unknown';
+  const isDocUnknown =
+    docRaw === 'unknown' ||
+    answers.documented_income === 'unknown' ||
+    answers.documented_monthly_income === 'unknown' ||
+    answers.documented_income_itr === 'unknown';
 
   if (isDocUnknown) {
     documentationStatus = 'unknown';
@@ -88,14 +117,15 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
   } else if (explicitDocIncome !== null) {
     documentedIncome = explicitDocIncome;
     if (documentationStatus === 'unknown') {
-      documentationStatus = documentedIncome >= claimedTotalIncome ? 'full' : (documentedIncome > 0 ? 'partial' : 'none');
+      documentationStatus =
+        documentedIncome >= claimedTotalIncome ? 'full' : documentedIncome > 0 ? 'partial' : 'none';
     }
   } else if (itrAnnual !== null && itrAnnual > 0) {
     documentedIncome = itrAnnual / 12;
     if (documentationStatus === 'unknown') {
       documentationStatus = documentedIncome >= claimedTotalIncome ? 'full' : 'partial';
     }
-  } else if (incomeType === 'salaried' || documentationStatus === 'full') {
+  } else if ((incomeType === 'salaried' && !isDocUnknown) || documentationStatus === 'full') {
     // Fully documented borrower: claimedTotalIncome = documentedIncome
     documentedIncome = claimedTotalIncome;
   } else if (documentationStatus === 'none') {
@@ -105,62 +135,75 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
     documentedIncome = documentationStatus === 'unknown' ? null : 0;
   }
 
-  // Claimed income should not be less than verified documented income
+  // Claimed income should not be less than documented income
   if (documentedIncome !== null && documentedIncome > claimedTotalIncome) {
     claimedTotalIncome = documentedIncome;
   }
 
   // Collateral
-  const collateralType = str(answers.collateral_available) as CollateralType || 'none';
+  const collateralType = (str(answers.collateral_available) as CollateralType) || 'none';
   const collateralValue = collateralType !== 'none' ? num(answers.collateral_value) : null;
 
-  // Co-applicant
+  // Co-applicant: STRICTLY require explicit confirmation (Never assume spouse is co-applicant)
   const hasCo = str(answers.co_applicant) === 'yes';
   const coApplicantIncome = hasCo ? (num(answers.co_applicant_income) ?? 0) : 0;
 
   // Determine if secured product
-  // Build a temporary loan type to check
   const hasCollateral = collateralType !== 'none' && collateralValue !== null && collateralValue > 0;
   let loanTypeForSecured = 'personal_loan';
   if (loanPurpose === 'home_purchase') loanTypeForSecured = 'home_loan';
   else if (loanPurpose === 'vehicle') loanTypeForSecured = 'two_wheeler_loan';
   else if (loanPurpose === 'business_expansion') {
-    if (hasCollateral) loanTypeForSecured = collateralType === 'property_commercial' ? 'lap_commercial' : 'lap';
+    if (hasCollateral)
+      loanTypeForSecured = collateralType === 'property_commercial' ? 'lap_commercial' : 'lap';
     else loanTypeForSecured = 'business_loan';
-  }
-  else if (collateralType === 'gold') loanTypeForSecured = 'gold_loan';
+  } else if (collateralType === 'gold') loanTypeForSecured = 'gold_loan';
   const secured = isSecuredProduct(loanTypeForSecured);
 
-  const stabilityStr = str(answers.income_stability) || str(answers.income_stability_biz) || str(answers.income_stability_informal);
+  // Income Stability (Never infer stability merely from employment type)
+  const stabilityStr =
+    str(answers.income_stability) ||
+    str(answers.income_stability_biz) ||
+    str(answers.income_stability_informal);
   let incomeStability: IncomeStability = 'unknown';
-  if (stabilityStr === 'stable') incomeStability = 'stable';
-  else if (stabilityStr === 'moderate') incomeStability = 'moderate';
-  else if (stabilityStr === 'unstable') incomeStability = 'unstable';
-  else if (incomeType === 'salaried' && (!answers.variable_income_share || num(answers.variable_income_share) === 0)) {
-    // Standard salaried income with no variable component is stable fixed salary
+  if (stabilityStr === 'stable') {
+    incomeStability = 'stable';
+  } else if (stabilityStr === 'moderate') {
+    incomeStability = 'moderate';
+  } else if (stabilityStr === 'unstable') {
+    incomeStability = 'unstable';
+  } else if (stabilityStr === 'unknown') {
+    incomeStability = 'unknown';
+  } else if (
+    incomeType === 'salaried' &&
+    !answers.income_stability &&
+    (!answers.variable_income_share || num(answers.variable_income_share) === 0)
+  ) {
+    // Only assume stable for salaried if question was not asked and variable share is 0
     incomeStability = 'stable';
   }
 
-  const { undocumentedPortion, eligibleIncomeLender } =
-    computeEligibleIncomeLender(
-      documentedIncome,
-      claimedTotalIncome,
-      secured,
-      coApplicantIncome,
-      {
-        documentationStatus,
-        incomeStability,
-        businessTenure,
-        isSecured: secured,
-        hasRecords: documentationStatus === 'partial',
-      }
-    );
+  const { undocumentedPortion, eligibleIncomeLender } = computeEligibleIncomeLender(
+    documentedIncome,
+    claimedTotalIncome,
+    secured,
+    coApplicantIncome,
+    {
+      documentationStatus,
+      incomeStability,
+      businessTenure,
+      isSecured: secured,
+      hasRecords: documentationStatus === 'partial',
+    }
+  );
   const eligibleIncomeSafe = computeEligibleIncomeSafe(claimedTotalIncome, coApplicantIncome);
 
-  // Existing EMI
+  // Existing EMI (Allows 0 or unknown)
   const rawEMI = str(answers.existing_emi) === 'unknown' ? null : num(answers.existing_emi);
-  const { value: existingEMI, isDefaulted: existingEMIIsDefaulted } =
-    computeExistingEMI(rawEMI, eligibleIncomeSafe);
+  const { value: existingEMI, isDefaulted: existingEMIIsDefaulted } = computeExistingEMI(
+    rawEMI,
+    eligibleIncomeSafe
+  );
 
   // Business debt
   const businessDebtEMI = num(answers.business_debt) ?? 0;
@@ -169,14 +212,17 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
   const hasHighCost = str(answers.high_cost_debt) === 'has_debt';
   const highCostOutstanding = hasHighCost ? (num(answers.high_cost_debt_amount) ?? 0) : 0;
   const rawHighCostMonthly = hasHighCost
-    ? (str(answers.high_cost_debt_monthly) === 'unknown' ? null : num(answers.high_cost_debt_monthly))
+    ? str(answers.high_cost_debt_monthly) === 'unknown'
+      ? null
+      : num(answers.high_cost_debt_monthly)
     : null;
   const hcd = hasHighCost
     ? computeHighCostDebtEMI(rawHighCostMonthly, highCostOutstanding)
     : { value: 0, isDefaulted: false, range: undefined };
 
-  // Essential expenses
-  const rawExpenses = str(answers.essential_expenses) === 'unknown' ? null : num(answers.essential_expenses);
+  // Essential expenses (with coarse bucket fallback)
+  const rawExpenses =
+    str(answers.essential_expenses) === 'unknown' ? null : num(answers.essential_expenses);
   let expenseInput = rawExpenses;
   if (expenseInput === null && answers.expense_bucket && str(answers.expense_bucket) !== 'unknown') {
     expenseInput = num(answers.expense_bucket);
@@ -194,23 +240,24 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
     creditScoreStatus = isNaN(creditScore) ? 'unknown' : 'known';
   }
 
-  // Repayment history
+  // Repayment history: Never infer clean history from absence of a bounce
   const repaymentRaw = str(answers.repayment_history);
   let repaymentHistory: RepaymentHistory = 'unknown';
-  if (repaymentRaw === 'clean') repaymentHistory = 'clean';
-  else if (repaymentRaw === 'bounce') repaymentHistory = 'bounce';
+  if (repaymentRaw === 'clean') {
+    repaymentHistory = 'clean';
+  } else if (repaymentRaw === 'bounce' || str(answers.recent_bounce) === 'yes') {
+    repaymentHistory = 'bounce';
+  } else if (repaymentRaw === 'unknown') {
+    repaymentHistory = 'unknown';
+  }
 
   const recentBounce = str(answers.recent_bounce) === 'yes' || repaymentHistory === 'bounce';
 
-  // Stability was resolved during income normalization above
-
-  // Documentation status was resolved during income normalization above
-
-  // Dependents
+  // Dependents and other regular earner
   const dependents = num(answers.dependents) ?? 0;
   const hasOtherEarner = str(answers.other_earner) === 'yes' || coApplicantIncome > 0;
 
-  // Emergency savings
+  // Emergency savings (null = genuinely unknown)
   const savingsRaw = str(answers.emergency_savings);
   let emergencySavingsMonths: number | null = null;
   if (savingsRaw && savingsRaw !== 'unknown' && savingsRaw !== '') {
@@ -228,7 +275,7 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
   } else if (incomeStability === 'moderate') {
     variableIncomeShare = 0.15;
   } else if (incomeStability === 'unstable') {
-    variableIncomeShare = 0.50;
+    variableIncomeShare = 0.5;
   }
 
   // Productive return (display only)
@@ -265,7 +312,7 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
     coApplicantIncome,
     emergencySavingsMonths,
     upcomingLargeExpense,
-    employmentTenure: str(answers.employment_tenure) as BorrowerProfile['employmentTenure'] || undefined,
+    employmentTenure: (str(answers.employment_tenure) as BorrowerProfile['employmentTenure']) || undefined,
     businessTenure,
     variableIncomeShare,
     isProductiveLoan,

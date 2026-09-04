@@ -118,7 +118,7 @@ export default function NegotiationCardView({ profile, output, personaName, onBa
 
         {isDontBorrow && (
           <div className="bg-[#fef2f2] border border-[#fecaca] rounded-xl p-3 mb-5 text-xs sm:text-sm text-[#991b1b] font-semibold text-center">
-            ⚠ Amounts below are mathematical capacity — NOT a recommendation to borrow.
+            ⚠ These are mathematical capacity estimates, not an invitation to borrow.
           </div>
         )}
 
@@ -163,8 +163,7 @@ export default function NegotiationCardView({ profile, output, personaName, onBa
           </div>
           <div>
             <p className="text-[11px] sm:text-xs text-[#71717a]">Stress Result</p>
-            <p className="text-sm sm:text-base font-bold text-[#18181b] mt-0.5">{stress.incomeShock.classification}</p>
-            <p className="text-[10px] sm:text-xs text-[#71717a]">(income −20%)</p>
+            <p className="text-sm sm:text-base font-bold text-[#18181b] mt-0.5">{stress.baselineClassification}</p>
           </div>
         </div>
 
@@ -172,15 +171,15 @@ export default function NegotiationCardView({ profile, output, personaName, onBa
         <div className="mb-5 sm:mb-6">
           <div className="bg-[#f2f8f4] rounded-xl p-3.5 sm:p-4 border border-[#cde5d6]">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[11px] sm:text-xs font-bold text-[#065f46] uppercase tracking-wide">Illustrative Investment Comparison (SIP)</span>
+              <span className="text-[11px] sm:text-xs font-bold text-[#065f46] uppercase tracking-wide">Illustrative Opportunity-Cost Comparison (SIP)</span>
               <span className="text-xs font-semibold text-[#065f46]">{defaultTenure} mo</span>
             </div>
             <p className="text-lg sm:text-xl font-extrabold text-[#065f46]">{formatCurrency(cardSIP.futureValue, true)}</p>
             <p className="text-xs text-[#064e3b] mt-1 leading-relaxed">
-              Investing {formatEMI(cardSIP.monthlyInvestment)}/mo at an assumed 12% p.a. creates a {formatCurrency(cardSIP.futureValue, true)} portfolio (+{formatCurrency(cardSIP.wealthGain, true)} returns) instead of paying interest.
+              At an assumed 12% annual return, investing {formatEMI(cardSIP.monthlyInvestment)}/mo creates a {formatCurrency(cardSIP.futureValue, true)} portfolio (+{formatCurrency(cardSIP.wealthGain, true)} returns) instead of paying interest.
             </p>
             <p className="text-[11px] text-[#065f46] font-semibold mt-1">
-              Net wealth swing: {formatCurrency(cardSIP.netWealthDifference, true)} in your favour • Illustration only, not guaranteed
+              Not guaranteed; market returns can be lower or negative • Net wealth swing: {formatCurrency(cardSIP.netWealthDifference, true)} in your favour
             </p>
           </div>
         </div>

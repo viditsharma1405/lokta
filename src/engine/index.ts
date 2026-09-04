@@ -11,6 +11,7 @@ import { computeEffectiveCostForProfile } from './effectiveCost';
 import { computeStressTest } from './stressTest';
 import { computeDecision } from './decision';
 import { computeProductRoute } from './productRoute';
+import { buildProvenanceSummary } from './provenance';
 
 /**
  * Run the complete copilot calculation pipeline.
@@ -45,7 +46,7 @@ export function runCopilot(profile: BorrowerProfile, customTenure?: number): Cop
   // Step 7: Product route
   const productRoute = computeProductRoute(profile);
 
-  return {
+  const baseOutput = {
     lenderCapacity,
     safeCapacity,
     fairRate,
@@ -53,6 +54,13 @@ export function runCopilot(profile: BorrowerProfile, customTenure?: number): Cop
     stress,
     decision,
     productRoute,
+  };
+
+  const provenanceSummary = buildProvenanceSummary(profile, baseOutput);
+
+  return {
+    ...baseOutput,
+    provenanceSummary,
   };
 }
 
