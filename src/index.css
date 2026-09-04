@@ -1,0 +1,120 @@
+@import "tailwindcss";
+
+@theme {
+  --color-lokta-50: #faf4f8;
+  --color-lokta-100: #f4e7f0;
+  --color-lokta-200: #e8d0e0;
+  --color-lokta-300: #d3a7c5;
+  --color-lokta-400: #b26a9e;
+  --color-lokta-500: #873673;
+  --color-lokta-600: #5a2045;
+  --color-lokta-700: #4b1a39;
+  --color-lokta-800: #3e152f;
+  --color-lokta-900: #331127;
+  --color-lokta-950: #200717;
+
+  --color-safe: #065f46;
+  --color-safe-light: #ecfdf5;
+  --color-caution: #92400e;
+  --color-caution-light: #fffbeb;
+  --color-danger: #991b1b;
+  --color-danger-light: #fef2f2;
+  --color-info: #5a2045;
+  --color-info-light: #faf4f8;
+
+  --font-display: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-body: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+}
+
+.font-serif {
+  font-family: 'Instrument Serif', Georgia, serif;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: -0.012em;
+    background-color: #faf7f2;
+    color: #18181b;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  /* Slider thumb styling - clean matte plum purple with subtle shadow */
+  input[type='range']::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #5a2045;
+    border: 2.5px solid #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+    transition: transform 0.1s;
+  }
+  input[type='range']::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+  }
+  input[type='range']::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #5a2045;
+    border: 2.5px solid #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+  }
+}
+/* Sleek custom scrollbar */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #d5cdc2 #f4efe8;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f4efe8;
+  border-radius: 9999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #d5cdc2;
+  border-radius: 9999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #5a2045;
+}
+
+/* Print styles for Negotiation Card */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .negotiation-card,
+  .negotiation-card * {
+    visibility: visible !important;
+  }
+  .negotiation-card {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 20px;
+    font-size: 11pt;
+  }
+  .no-print {
+    display: none !important;
+  }
+}

@@ -1,0 +1,919 @@
+import { useState, useMemo } from 'react';
+import type { BorrowerProfile } from '../../types/profile';
+import type { CopilotOutput, StressClassification } from '../../types/calculations';
+import { formatCurrency, formatEMI, formatRateBand, formatPercent, formatLakhs } from '../../utils/currency';
+import { computeEMI, computeLoanCostBreakdown, computeSIPComparison } from '../../engine/emi';
+import { TENURE_DEFAULTS, TENURE_OPTIONS } from '../../rules/constants';
+import { determineLoanTypeKey, computeLenderCapacity } from '../../engine/lenderCapacity';
+import { computeSafeCapacity } from '../../engine/safeCapacity';
+import { runCopilot } from '../../engine/index';
+import {
+  computeEligibleIncomeLender,
+  computeEligibleIncomeSafe,
+  isSecuredProduct,
+} from '../../engine/income';
+
+interface ResultsDashboardProps {
+  profile: BorrowerProfile;
+  output: CopilotOutput;
+  personaName: string;
+  onShowCard: () => void;
+}
+
+// ── Slider Component ─────────────────────────────────────────────────────────
+function InputSlider({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  format,
+  hint,
+  color = 'lokta',
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (v: number) => void;
+  format: (v: number) => string;
+  hint?: string;
+  color?: string;
+}) {
+  const pct = ((value - min) / (max - min)) * 100;
+  const accentColor = color === 'amber' ? '#b45309' : color === 'red' ? '#dc2626' : '#5a2045';
+  const trackStyle = {
+    background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${pct}%, #eae3d9 ${pct}%, #eae3d9 100%)`,
+  };
+
+  return (
+    <div className="py-2 touch-pan-y">
+      <div className="flex justify-between items-center mb-1.5 gap-2">
+        <span className="text-xs font-medium text-[#52525b]">{label}</span>
+        <span className="text-sm font-bold text-[#18181b] bg-[#faf7f2] px-2 py-0.5 rounded-md border border-[#eae3d9] flex-shrink-0">
+          {format(value)}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={e => onChange(Number(e.target.value))}
+        className="w-full h-2 rounded-full appearance-none cursor-pointer focus:outline-none"
+        style={trackStyle}
+      />
+      <div className="flex justify-between text-[11px] sm:text-xs text-[#71717a] mt-0.5">
+        <span>{format(min)}</span>
+        <span>{format(max)}</span>
+      </div>
+      {hint && <p className="text-[11px] sm:text-xs text-[#71717a] mt-0.5 italic">{hint}</p>}
+    </div>
+  );
+}
+
+// ── Tenure Slider Component ──────────────────────────────────────────────────
+function TenureSlider({
+  label = 'Loan tenure',
+  value,
+  options,
+  defaultTenure,
+  onChange,
+}: {
+  label?: string;
+  value: number;
+  options: number[];
+  defaultTenure: number;
+  onChange: (v: number) => void;
+}) {
+  const minIdx = 0;
+  const maxIdx = options.length - 1;
+  const currentIdx = Math.max(0, options.indexOf(value));
+  const pct = maxIdx > 0 ? (currentIdx / maxIdx) * 100 : 0;
+
+  const trackStyle = {
+    background: `linear-gradient(to right, #5a2045 0%, #5a2045 ${pct}%, #eae3d9 ${pct}%, #eae3d9 100%)`,
+  };
+
+  return (
+    <div className="py-2.5 touch-pan-y">
+      <div className="flex justify-between items-center mb-1.5 gap-2">
+        <span className="text-xs font-medium text-[#52525b]">{label}</span>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {value === defaultTenure && (
+            <span className="text-[10px] text-[#5a2045] bg-[#f4e7f0] border border-[#e8d0e0] px-1.5 py-0.2 rounded font-semibold">Default</span>
+          )}
+          <span className="text-sm font-bold text-[#18181b] bg-[#faf7f2] px-2 py-0.5 rounded-md border border-[#eae3d9]">
+            {value} months
+          </span>
+        </div>
+      </div>
+      <input
+        type="range"
+        min={minIdx}
+        max={maxIdx}
+        step={1}
+        value={currentIdx}
+        onChange={e => {
+          const idx = Number(e.target.value);
+          if (options[idx] !== undefined) onChange(options[idx]);
+        }}
+        className="w-full h-2 rounded-full appearance-none cursor-pointer focus:outline-none"
+        style={trackStyle}
+      />
+      <div className="flex justify-between items-center text-[11px] sm:text-xs text-[#71717a] mt-1 gap-1">
+        <span className="hidden xs:inline flex-shrink-0">{options[0]}m</span>
+        <div className="flex gap-1 flex-wrap justify-center mx-auto">
+          {options.map(opt => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => onChange(opt)}
+              className={`text-[10px] sm:text-xs px-2 py-0.5 sm:py-1 rounded-md transition-all cursor-pointer ${
+                opt === value
+                  ? 'bg-[#5a2045] text-white font-bold shadow-xs'
+                  : 'bg-[#faf7f2] border border-[#eae3d9] text-[#52525b] hover:text-[#18181b] hover:bg-[#f2efe9]'
+              }`}
+            >
+              {opt}m
+            </button>
+          ))}
+        </div>
+        <span className="hidden xs:inline flex-shrink-0">{options[maxIdx]}m</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Verdict Badge ────────────────────────────────────────────────────────────
+function VerdictBadge({ verdict }: { verdict: string }) {
+  const cfg = {
+    'BORROW': { bg: 'bg-[#ecfdf5] border-[#a7f3d0]', text: 'text-[#065f46]', icon: '✓', label: 'Borrow' },
+    'BORROW_LESS': { bg: 'bg-[#fffbeb] border-[#fde68a]', text: 'text-[#92400e]', icon: '⚠', label: 'Borrow Less' },
+    'DONT_BORROW': { bg: 'bg-[#fef2f2] border-[#fecaca]', text: 'text-[#991b1b]', icon: '✕', label: "Don't Borrow" },
+  }[verdict] ?? { bg: 'bg-[#faf7f2] border-[#eae3d9]', text: 'text-[#52525b]', icon: '?', label: verdict };
+
+  return (
+    <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl font-bold text-sm border ${cfg.bg} ${cfg.text}`}>
+      <span>{cfg.icon}</span> {cfg.label}
+    </div>
+  );
+}
+
+// ── Confidence Dot ───────────────────────────────────────────────────────────
+function ConfidenceDot({ level }: { level: string }) {
+  const color = { 'HIGH': 'bg-emerald-600', 'MEDIUM': 'bg-amber-500', 'LOW': 'bg-red-600' }[level] ?? 'bg-gray-400';
+  const label = { 'HIGH': 'High confidence', 'MEDIUM': 'Medium confidence', 'LOW': 'Low confidence' }[level] ?? level;
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-[#71717a]">
+      <span className={`w-2 h-2 rounded-full ${color}`} />
+      {label}
+    </span>
+  );
+}
+
+// ── Stress Bar ───────────────────────────────────────────────────────────────
+function StressBar({ pct, classification }: { pct: number; classification: StressClassification }) {
+  const barColor = {
+    'Comfortable': 'bg-emerald-600',
+    'Tight': 'bg-amber-500',
+    'Stressed': 'bg-orange-500',
+    'Unsustainable': 'bg-red-600',
+  }[classification];
+  const textColor = {
+    'Comfortable': 'text-emerald-800',
+    'Tight': 'text-amber-800',
+    'Stressed': 'text-orange-800',
+    'Unsustainable': 'text-red-800',
+  }[classification];
+  const displayPct = Math.min(pct, 100);
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex-1 bg-[#eae3d9] rounded-full h-2.5">
+        <div className={`${barColor} h-2.5 rounded-full transition-all duration-500`} style={{ width: `${displayPct}%` }} />
+      </div>
+      <span className={`text-xs font-semibold w-28 ${textColor}`}>
+        {pct.toFixed(1)}% · {classification}
+      </span>
+    </div>
+  );
+}
+
+// ── Expandable ───────────────────────────────────────────────────────────────
+function Expandable({ title, children }: { title: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border-t border-[#eae3d9] pt-2 mt-2">
+      <button onClick={() => setOpen(!open)} className="text-xs text-[#5a2045] hover:text-[#4b1a39] font-semibold flex items-center gap-1 cursor-pointer">
+        {open ? '▾' : '▸'} {title}
+      </button>
+      {open && <div className="mt-2 text-xs text-[#52525b] space-y-1 leading-relaxed">{children}</div>}
+    </div>
+  );
+}
+
+// ── Main Component ───────────────────────────────────────────────────────────
+export default function ResultsDashboard({ profile, output: _output, personaName, onShowCard }: ResultsDashboardProps) {
+  // Editable inputs — initialized from profile
+  const [income, setIncome] = useState(Math.round(profile.eligibleIncomeSafe - profile.coApplicantIncome));
+  const [expenses, setExpenses] = useState(Math.round(profile.essentialExpenses));
+  const [existingEMI, setExistingEMI] = useState(Math.round(profile.existingEMI));
+  const [requestedAmount, setRequestedAmount] = useState(Math.round(profile.requestedAmount));
+  const [highCostEMI, setHighCostEMI] = useState(Math.round(profile.highCostDebtEMI));
+
+  // Rebuild profile when input sliders change
+  const updatedProfile = useMemo<BorrowerProfile>(() => {
+    const loanTypeKey = determineLoanTypeKey(profile);
+    const secured = isSecuredProduct(loanTypeKey);
+    
+    // If the borrower is salaried or fully documented, their documented income equals their total income
+    let dynamicDocumentedIncome = profile.documentedIncome;
+    if (profile.incomeType === 'salaried' || profile.documentationStatus === 'full') {
+      dynamicDocumentedIncome = income;
+    } else if (profile.documentationStatus === 'none') {
+      dynamicDocumentedIncome = 0;
+    } else if (profile.documentationStatus === 'partial') {
+      dynamicDocumentedIncome = Math.min(income, profile.documentedIncome);
+    }
+
+    const { eligibleIncomeLender, undocumentedPortion } = computeEligibleIncomeLender(
+      dynamicDocumentedIncome,
+      income,
+      secured,
+      profile.coApplicantIncome
+    );
+    const eligibleIncomeSafe = computeEligibleIncomeSafe(income, profile.coApplicantIncome);
+
+    return {
+      ...profile,
+      documentedIncome: dynamicDocumentedIncome,
+      claimedTotalIncome: income,
+      undocumentedPortion,
+      eligibleIncomeLender,
+      eligibleIncomeSafe,
+      essentialExpenses: expenses,
+      essentialExpensesIsDefaulted: false,
+      existingEMI,
+      existingEMIIsDefaulted: false,
+      highCostDebtEMI: highCostEMI,
+      highCostDebtEMIIsDefaulted: false,
+      requestedAmount,
+    };
+  }, [income, expenses, existingEMI, requestedAmount, highCostEMI, profile]);
+
+  // Primary Assessment (at product default tenure) — remains the baseline
+  const output = useMemo<CopilotOutput>(() => {
+    return runCopilot(updatedProfile);
+  }, [updatedProfile]);
+
+  const { lenderCapacity, safeCapacity, fairRate, effectiveCost, stress, decision, productRoute } = output;
+  const isDontBorrow = decision.verdict === 'DONT_BORROW';
+
+  const loanTypeKey = determineLoanTypeKey(profile);
+  const defaultTenure = TENURE_DEFAULTS[loanTypeKey] ?? 36;
+  const tenureOpts = TENURE_OPTIONS[loanTypeKey] ?? [12, 24, 36, 48, 60];
+
+  // Interactive Tenure Simulator state (initialized strictly to default tenure)
+  const [simulatedTenure, setSimulatedTenure] = useState<number>(defaultTenure);
+
+  // Mobile segment control: Results vs Adjust Finances
+  const [mobileTab, setMobileTab] = useState<'results' | 'finances'>('results');
+
+  // Feature state: If invest instead (Illustrative SIP)
+  const [sipReturnPct, setSipReturnPct] = useState<number>(12);
+
+  const effectiveInterestRate = fairRate.fairRateMid;
+
+  // What-If scenario (propagating simulatedTenure to Safe Amount and Lender Likely Amount)
+  const simulatedScenario = useMemo(() => {
+    // 1. Safe capacity at simulated tenure (Safe EMI ceiling strictly unchanged; Safe Amount recalculates)
+    const simSafeCapacity = computeSafeCapacity(updatedProfile, fairRate.fairRateHigh, simulatedTenure);
+
+    // 2. Lender capacity at simulated tenure (FOIR-supported principal recalculates; LTV cap preserved for secured)
+    const simLenderCapacity = computeLenderCapacity(updatedProfile, fairRate.fairRateMid, simulatedTenure);
+
+    return {
+      safeCapacity: simSafeCapacity,
+      lenderCapacity: simLenderCapacity,
+    };
+  }, [updatedProfile, fairRate.fairRateHigh, fairRate.fairRateMid, simulatedTenure]);
+
+
+
+  // Illustrative SIP comparison (calculates against the loan interest that would be avoided)
+  const sipPrincipal = safeCapacity.recommendedAmount > 0 ? safeCapacity.recommendedAmount : requestedAmount;
+  const sipLoanCost = useMemo(() => {
+    return computeLoanCostBreakdown(
+      sipPrincipal,
+      effectiveInterestRate,
+      simulatedTenure,
+      effectiveCost.processingFeePct
+    );
+  }, [sipPrincipal, effectiveInterestRate, simulatedTenure, effectiveCost.processingFeePct]);
+
+  const sipComparison = useMemo(() => {
+    const monthlyToInvest = safeCapacity.recommendedEMI > 0 ? safeCapacity.recommendedEMI : sipLoanCost.monthlyEMI;
+    return computeSIPComparison(
+      monthlyToInvest,
+      simulatedTenure,
+      sipReturnPct,
+      sipLoanCost.totalInterest
+    );
+  }, [safeCapacity.recommendedEMI, sipLoanCost.monthlyEMI, simulatedTenure, sipReturnPct, sipLoanCost.totalInterest]);
+
+  // Slider ranges — generous but sensible
+  const incomeMax = Math.max(income * 4, 500000);
+  const expenseMax = Math.max(income, expenses * 3, 200000);
+  const emiMax = Math.max(income * 0.8, existingEMI * 3, 100000);
+  const amountMax = Math.max(requestedAmount * 3, lenderCapacity.lenderLikelyAmount * 2, 5000000);
+  const hcdMax = Math.max(highCostEMI * 4, 50000, income * 0.5);
+
+  // Live disposal calculation for the mini bar
+  const disposable = Math.max(0, income - expenses - existingEMI - highCostEMI);
+  const disposablePct = income > 0 ? (disposable / income) * 100 : 0;
+
+  return (
+    <div className="max-w-6xl mx-auto">
+      {/* Persona badge */}
+      {personaName && (
+        <div className="mb-4 bg-[#f4e7f0] text-[#5a2045] text-sm font-semibold px-4 py-2 rounded-xl inline-flex items-center gap-2 border border-[#e8d0e0]">
+          <span className="w-6 h-6 bg-[#5a2045] text-white rounded-full flex items-center justify-center text-xs font-bold">{personaName[0]}</span>
+          Demo: {personaName}'s Assessment
+        </div>
+      )}
+
+      {/* Mobile Segmented Tab Control */}
+      <div className="flex lg:hidden bg-white p-1 rounded-xl border border-[#eae3d9] mb-4 shadow-xs">
+        <button
+          type="button"
+          onClick={() => setMobileTab('results')}
+          className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all text-center cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.99] ${
+            mobileTab === 'results'
+              ? 'bg-[#5a2045] text-white shadow-xs'
+              : 'text-[#52525b] hover:text-[#18181b] hover:bg-[#faf7f2]'
+          }`}
+        >
+          <span>📊</span> Assessment Results
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileTab('finances')}
+          className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all text-center cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.99] ${
+            mobileTab === 'finances'
+              ? 'bg-[#5a2045] text-white shadow-xs'
+              : 'text-[#52525b] hover:text-[#18181b] hover:bg-[#faf7f2]'
+          }`}
+        >
+          <span>✏️</span> Adjust Finances
+        </button>
+      </div>
+
+      <div className="flex flex-col lg:flex-row gap-5 items-start">
+
+        {/* ── LEFT: Input Panel ─────────────────────────────────────────────── */}
+        <div className={`w-full lg:w-80 lg:sticky lg:top-20 max-h-[85vh] lg:max-h-[calc(100vh-5.5rem)] overflow-y-auto custom-scrollbar bg-white rounded-2xl border border-[#eae3d9] p-4 sm:p-5 shadow-xs flex-shrink-0 ${
+          mobileTab === 'finances' ? 'block' : 'hidden lg:block'
+        }`}>
+          <div className="flex items-center gap-2 mb-4 sticky top-0 bg-white/95 backdrop-blur-xs pb-2 pt-0.5 z-10 -mx-1 px-1 border-b border-[#eae3d9]/50">
+            <div className="w-7 h-7 bg-[#f4e7f0] rounded-lg flex items-center justify-center">
+              <span className="text-[#5a2045] text-sm">✏</span>
+            </div>
+            <h3 className="text-base font-bold text-[#18181b]">Your Finances</h3>
+            <span className="text-xs text-[#71717a] ml-auto">Drag to update</span>
+          </div>
+
+          <div className="space-y-1 divide-y divide-[#eae3d9]">
+            <InputSlider
+              label="Monthly income"
+              value={income}
+              min={5000}
+              max={incomeMax}
+              step={1000}
+              onChange={setIncome}
+              format={v => formatCurrency(v, true)}
+            />
+            <InputSlider
+              label="Monthly expenses"
+              value={expenses}
+              min={0}
+              max={expenseMax}
+              step={1000}
+              onChange={setExpenses}
+              format={v => formatCurrency(v, true)}
+              color={expenses > income * 0.7 ? 'red' : 'amber'}
+            />
+            <InputSlider
+              label="Existing EMIs / month"
+              value={existingEMI}
+              min={0}
+              max={emiMax}
+              step={500}
+              onChange={setExistingEMI}
+              format={v => formatCurrency(v, true)}
+            />
+            {profile.highCostDebtOutstanding > 0 && (
+              <InputSlider
+                label="High-cost debt payment"
+                value={highCostEMI}
+                min={0}
+                max={hcdMax}
+                step={500}
+                onChange={setHighCostEMI}
+                format={v => formatCurrency(v, true)}
+                color="red"
+                hint="Loans at 30%+ APR"
+              />
+            )}
+            <InputSlider
+              label="Loan amount requested"
+              value={requestedAmount}
+              min={10000}
+              max={amountMax}
+              step={10000}
+              onChange={setRequestedAmount}
+              format={v => formatCurrency(v, true)}
+              color="lokta"
+            />
+            <TenureSlider
+              label="Loan tenure"
+              value={simulatedTenure}
+              options={tenureOpts}
+              defaultTenure={defaultTenure}
+              onChange={setSimulatedTenure}
+            />
+          </div>
+
+          {/* Live disposable cash flow bar */}
+          <div className="mt-4 pt-4 border-t border-[#eae3d9]">
+            <div className="flex justify-between text-xs mb-1.5">
+              <span className="text-[#71717a]">Disposable cash flow</span>
+              <span className={`font-bold ${disposable <= 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                {formatCurrency(disposable, true)}/mo
+              </span>
+            </div>
+            <div className="w-full bg-[#eae3d9] rounded-full h-2">
+              <div
+                className={`h-2 rounded-full transition-all duration-300 ${disposable <= 0 ? 'bg-red-600' : disposablePct > 40 ? 'bg-emerald-600' : 'bg-amber-500'}`}
+                style={{ width: `${Math.min(100, disposablePct)}%` }}
+              />
+            </div>
+            <p className="text-xs text-[#71717a] mt-1">{disposablePct.toFixed(0)}% of income free after obligations</p>
+          </div>
+
+          {/* Fixed inputs (not slider-adjustable) */}
+          <div className="mt-4 pt-4 border-t border-[#eae3d9] space-y-1.5">
+            <p className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-2">Fixed Profile Inputs</p>
+            {[
+              { label: 'Income type', val: profile.incomeType.replace('_', ' ') },
+              {
+                label: 'Salary / Stability',
+                val:
+                  profile.incomeType === 'salaried'
+                    ? profile.incomeStability === 'stable'
+                      ? 'Fixed (No variable pay)'
+                      : profile.incomeStability === 'moderate'
+                      ? 'Variable (Moderate)'
+                      : profile.incomeStability === 'unstable'
+                      ? 'Variable (Commission)'
+                      : 'Fixed (No variable pay)'
+                    : profile.incomeStability.replace('_', ' '),
+              },
+              ...(profile.variableIncomeShare && profile.variableIncomeShare > 0
+                ? [{ label: 'Variable pay', val: `${(profile.variableIncomeShare * 100).toFixed(0)}% of income` }]
+                : []),
+              { label: 'Credit score', val: profile.creditScore ? String(profile.creditScore) : profile.creditScoreStatus.replace('_', ' ') },
+              { label: 'Repayment history', val: personaName === 'Ravi' && profile.repaymentHistory === 'clean' ? 'Clean (Demo Assumption)' : profile.repaymentHistory },
+              ...(profile.coApplicantIncome > 0 ? [{ label: 'Co-applicant', val: `₹${profile.coApplicantIncome.toLocaleString('en-IN')}/mo (Confirmed)` }] : []),
+              { label: 'Documentation', val: profile.documentationStatus },
+              { label: 'Product', val: productRoute.recommendedRoute },
+            ].map(item => (
+              <div key={item.label} className="flex justify-between items-center text-xs py-0.5 gap-2">
+                <span className="text-[#71717a] flex-shrink-0">{item.label}</span>
+                <span className="font-medium text-[#18181b] capitalize text-right">{item.val}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Mobile Apply Button */}
+          <div className="mt-5 pt-3 border-t border-[#eae3d9] lg:hidden">
+            <button
+              type="button"
+              onClick={() => {
+                setMobileTab('results');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="w-full py-3 rounded-xl bg-[#5a2045] hover:bg-[#4b1a39] text-white font-bold text-xs shadow-xs transition-all cursor-pointer text-center active:scale-[0.99]"
+            >
+              Apply Changes & View Results →
+            </button>
+          </div>
+        </div>
+
+        {/* ── RIGHT: Results Panel ────────────────────────────────────────── */}
+        <div className={`flex-1 min-w-0 space-y-4 ${
+          mobileTab === 'results' ? 'block' : 'hidden lg:block'
+        }`}>
+
+          {/* Mobile Quick Tweak Banner */}
+          <div className="flex items-center justify-between bg-[#faf4f8] border border-[#e8d0e0] px-3.5 py-2.5 rounded-xl lg:hidden shadow-xs">
+            <span className="text-xs text-[#5a2045] font-medium">Want to test different numbers?</span>
+            <button
+              type="button"
+              onClick={() => {
+                setMobileTab('finances');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="text-xs font-bold text-[#5a2045] bg-white px-3 py-1.5 rounded-lg border border-[#e8d0e0] shadow-xs cursor-pointer active:bg-[#f4e7f0]"
+            >
+              ✏️ Adjust Finances →
+            </button>
+          </div>
+
+          {/* Verdict */}
+          <div className={`rounded-2xl border p-4 sm:p-5 transition-colors ${
+            isDontBorrow ? 'bg-[#fef2f2] border-[#fecaca] text-[#991b1b]' :
+            decision.verdict === 'BORROW_LESS' ? 'bg-[#fffbeb] border-[#fde68a] text-[#92400e]' :
+            'bg-[#ecfdf5] border-[#a7f3d0] text-[#065f46]'
+          }`}>
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <VerdictBadge verdict={decision.verdict} />
+                <p className="text-sm text-[#3f3f46] mt-2 leading-relaxed max-w-xl">{decision.reason}</p>
+              </div>
+              {decision.actionSuggestion && (
+                <div className="bg-white rounded-xl p-3 text-xs text-[#52525b] border border-[#eae3d9] max-w-xs shadow-xs">
+                  💡 {decision.actionSuggestion}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Two Amounts */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            <div className="bg-white rounded-xl border border-[#eae3d9] p-4 shadow-xs">
+              <div className="flex items-center gap-1.5 mb-2">
+                <span className="w-5 h-5 bg-[#5a2045] text-white rounded-full flex items-center justify-center text-xs font-bold">L</span>
+                <span className="text-xs font-semibold text-[#71717a]">Lender-Likely</span>
+                <ConfidenceDot level={lenderCapacity.confidence} />
+              </div>
+              <p className="text-2xl font-extrabold text-[#18181b]">{formatLakhs(lenderCapacity.lenderLikelyAmount)}</p>
+              <p className="text-xs text-[#71717a] mt-0.5">
+                Baseline at {defaultTenure}mo default · FOIR: {(lenderCapacity.foir * 100).toFixed(0)}%
+              </p>
+              {simulatedTenure !== defaultTenure && (
+                <div className="mt-2 pt-2 border-t border-[#eae3d9] text-xs">
+                  <span className="text-[#71717a]">What-If at {simulatedTenure}mo: </span>
+                  <span className="font-bold text-[#5a2045]">{formatLakhs(simulatedScenario.lenderCapacity.lenderLikelyAmount)}</span>
+                </div>
+              )}
+              <Expandable title="How this was calculated">
+                {lenderCapacity.drivers.map((d, i) => <p key={i}>• {d}</p>)}
+              </Expandable>
+            </div>
+
+            <div className={`rounded-xl border-2 p-4 shadow-xs ${isDontBorrow ? 'bg-[#fef2f2] border-[#fecaca]' : 'bg-[#f2f8f4] border-[#a7f3d0]'}`}>
+              <div className="flex items-center gap-1.5 mb-2">
+                <span className={`w-5 h-5 ${isDontBorrow ? 'bg-red-600' : 'bg-[#065f46]'} text-white rounded-full flex items-center justify-center text-xs font-bold`}>S</span>
+                <span className="text-xs font-semibold text-[#71717a]">Borrower-Safe</span>
+                <ConfidenceDot level={safeCapacity.confidence} />
+              </div>
+              <p className={`text-2xl font-extrabold ${isDontBorrow ? 'text-red-600' : 'text-[#065f46]'}`}>{formatLakhs(safeCapacity.recommendedAmount)}</p>
+              <p className="text-xs text-[#71717a] mt-0.5">
+                Baseline at {defaultTenure}mo default · {isDontBorrow ? 'Math only — not a recommendation' : '← Use this number'}
+              </p>
+              {safeCapacity.safeAmountRange && (
+                <p className="text-xs text-[#52525b] mt-0.5">
+                  Range: {formatLakhs(safeCapacity.safeAmountRange.low)}–{formatLakhs(safeCapacity.safeAmountRange.high)}
+                </p>
+              )}
+              {simulatedTenure !== defaultTenure && (
+                <div className="mt-2 pt-2 border-t border-[#cde5d6] text-xs">
+                  <span className="text-[#52525b]">What-If at {simulatedTenure}mo: </span>
+                  <span className="font-bold text-[#065f46]">{formatLakhs(simulatedScenario.safeCapacity.recommendedAmount)}</span>
+                </div>
+              )}
+              <Expandable title="How this was calculated">
+                {safeCapacity.drivers.map((d, i) => <p key={i}>• {d}</p>)}
+              </Expandable>
+            </div>
+          </div>
+
+          {/* EMI Ceiling */}
+          <div className="bg-white rounded-xl border border-[#eae3d9] p-4 sm:p-5 shadow-xs">
+            <h3 className="text-sm font-bold text-[#18181b] mb-3 sm:mb-4">EMI Ceiling</h3>
+            <div className="grid grid-cols-3 gap-1.5 sm:gap-4 mb-4 sm:mb-5">
+              <div className="p-2 sm:p-0 bg-[#faf7f2] sm:bg-transparent rounded-lg sm:rounded-none">
+                <p className="text-[10px] sm:text-xs text-[#71717a] font-medium">Safe Ceiling</p>
+                <p className="text-sm sm:text-xl font-extrabold text-[#18181b] mt-0.5">{formatEMI(safeCapacity.safeEMI)}</p>
+                <p className="text-[10px] sm:text-xs text-red-600 font-medium leading-tight mt-0.5">Do not cross</p>
+              </div>
+              <div className="p-2 sm:p-0 bg-[#f2f8f4] sm:bg-transparent rounded-lg sm:rounded-none">
+                <p className="text-[10px] sm:text-xs text-[#71717a] font-medium">Recommended</p>
+                <p className="text-sm sm:text-xl font-extrabold text-[#065f46] mt-0.5">{formatEMI(safeCapacity.recommendedEMI)}</p>
+                <p className="text-[10px] sm:text-xs text-[#71717a] leading-tight mt-0.5">= safe × 90%</p>
+              </div>
+              <div className="p-2 sm:p-0 bg-[#faf4f8] sm:bg-transparent rounded-lg sm:rounded-none">
+                <p className="text-[10px] sm:text-xs text-[#71717a] font-medium">Lender Max</p>
+                <p className="text-sm sm:text-xl font-extrabold text-[#5a2045] mt-0.5">{formatEMI(lenderCapacity.availableNewEMI)}</p>
+                <p className="text-[10px] sm:text-xs text-[#71717a] leading-tight mt-0.5">FOIR capacity</p>
+              </div>
+            </div>
+
+            {/* Tenure table */}
+            <div className="border-t border-[#eae3d9] pt-4">
+              <div className="flex justify-between items-center mb-3">
+                <p className="text-xs font-semibold text-[#71717a] uppercase tracking-wider">
+                  How tenure changes EMI (at {effectiveInterestRate.toFixed(1)}% fair mid-rate)
+                </p>
+                <span className="text-[11px] text-[#71717a]">
+                  Click tenure to simulate
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {tenureOpts.map(t => {
+                  const emi = computeEMI(safeCapacity.recommendedAmount, effectiveInterestRate, t);
+                  const total = emi * t;
+                  const isDefault = t === defaultTenure;
+                  const isSimulated = t === simulatedTenure;
+                  const isAboveCeiling = emi > safeCapacity.safeEMI;
+                  return (
+                    <div
+                      key={t}
+                      onClick={() => setSimulatedTenure(t)}
+                      className={`rounded-lg p-3 text-center border transition-all cursor-pointer ${
+                        isSimulated ? 'border-[#5a2045] ring-2 ring-[#5a2045] bg-[#faf4f8]' :
+                        isDefault ? 'border-[#e8d0e0] bg-[#faf7f2]' :
+                        isAboveCeiling ? 'border-red-200 bg-red-50' :
+                        'border-[#eae3d9] bg-white hover:border-[#5a2045]'
+                      }`}
+                    >
+                      <div className="flex justify-between items-center text-[10px] text-[#71717a] mb-0.5">
+                        <span>{t}mo</span>
+                        {isSimulated && <span className="text-[9px] bg-[#5a2045] text-white px-1 rounded font-bold">Active</span>}
+                        {!isSimulated && isDefault && <span className="text-[9px] text-[#5a2045] font-semibold">Def</span>}
+                      </div>
+                      <p className={`text-sm font-bold ${isSimulated ? 'text-[#5a2045]' : isDefault ? 'text-[#5a2045]' : isAboveCeiling ? 'text-red-600' : 'text-[#18181b]'}`}>
+                        {formatEMI(emi)}
+                      </p>
+                      <p className="text-xs text-[#71717a]">Total {formatCurrency(total, true)}</p>
+                      {isAboveCeiling && <p className="text-xs text-red-600 font-medium">↑ ceiling</p>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+
+
+          {/* Fair Rate + Effective Cost (side by side) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="bg-white rounded-xl border border-[#eae3d9] p-4 shadow-xs">
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="text-sm font-bold text-[#18181b]">Fair Rate Band</h3>
+                <ConfidenceDot level={fairRate.confidence} />
+              </div>
+              <p className="text-2xl font-extrabold text-[#5a2045]">{formatRateBand(fairRate.fairRateLow, fairRate.fairRateHigh)}</p>
+              <p className="text-xs text-[#71717a] mt-1">{productRoute.recommendedRoute} • base {fairRate.baseBandLow}%–{fairRate.baseBandHigh}%</p>
+              <Expandable title="Rate position breakdown">
+                <p>Start: {fairRate.startingPosition}/100</p>
+                {fairRate.adjustments.map((a, i) => (
+                  <p key={i}>• {a.factor}: {a.value > 0 ? '+' : ''}{a.value} pts</p>
+                ))}
+                <p>Final: {fairRate.finalPosition.toFixed(0)}/100 ± {fairRate.halfWidth}</p>
+              </Expandable>
+            </div>
+
+            <div className="bg-white rounded-xl border border-[#eae3d9] p-4 shadow-xs">
+              <h3 className="text-sm font-bold text-[#18181b] mb-2">Effective Annualized Cost</h3>
+              <p className="text-2xl font-extrabold text-[#18181b]">
+                {effectiveCost.effectiveAnnualizedCostRange
+                  ? `${formatPercent(effectiveCost.effectiveAnnualizedCostRange.low)}–${formatPercent(effectiveCost.effectiveAnnualizedCostRange.high)}`
+                  : formatPercent(effectiveCost.effectiveAnnualizedCost)}
+              </p>
+              <p className="text-xs text-[#71717a] mt-1">Nominal: {formatPercent(effectiveCost.nominalRate)} + processing fee (~{effectiveCost.processingFeePct.toFixed(1)}%)</p>
+              <Expandable title="What's included / excluded">
+                {effectiveCost.includedItems.map((it, i) => <p key={i}>✓ {it}</p>)}
+                {effectiveCost.excludedItems.map((it, i) => <p key={i} className="text-[#71717a]">✕ {it}</p>)}
+              </Expandable>
+            </div>
+          </div>
+
+          {/* ── If You Invest Instead (Illustrative Opportunity Comparison) ── */}
+          <div className="bg-[#f2f8f4] rounded-xl border border-[#cde5d6] p-5 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 bg-[#065f46] text-white rounded-lg flex items-center justify-center text-xs font-bold">📈</span>
+                  <h3 className="text-base font-bold text-[#065f46]">Illustrative Investment Comparison</h3>
+                </div>
+                <p className="text-xs text-[#047857] mt-0.5">
+                  Optional illustration: What if you skip this debt and invest the monthly EMI into a disciplined SIP?
+                </p>
+                <div className="mt-2 inline-flex items-center gap-1.5 bg-white text-[#065f46] text-[11px] font-medium px-2.5 py-1 rounded-md border border-[#a7f3d0]">
+                  <span>ℹ️</span> Assumed return: {sipReturnPct}% p.a. • This is an illustration, not a guaranteed investment return. Does not affect borrowing eligibility or loan limits.
+                </div>
+              </div>
+            </div>
+
+            {/* Expected Return Rate Selector */}
+            <div className="bg-white rounded-xl p-4 border border-[#cde5d6] mb-4 shadow-xs">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs font-semibold text-[#18181b]">Expected Annual Return Rate (p.a.):</span>
+                <span className="text-sm font-bold text-[#065f46] bg-[#ecfdf5] px-2.5 py-0.5 rounded-md border border-[#a7f3d0]">
+                  {sipReturnPct}% per year
+                </span>
+              </div>
+
+              {/* Preset return buttons */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                {[
+                  { label: '7% FD / Debt', rate: 7 },
+                  { label: '10% Balanced', rate: 10 },
+                  { label: '12% Equity SIP', rate: 12 },
+                  { label: '15% Growth', rate: 15 },
+                ].map(preset => (
+                  <button
+                    key={preset.rate}
+                    onClick={() => setSipReturnPct(preset.rate)}
+                    className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition-all text-center border cursor-pointer ${
+                      sipReturnPct === preset.rate
+                        ? 'bg-[#065f46] text-white border-[#065f46] shadow-xs'
+                        : 'bg-[#faf7f2] text-[#52525b] border-[#eae3d9] hover:bg-[#f2efe9]'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Fine-tune slider */}
+              <input
+                type="range"
+                min={4}
+                max={18}
+                step={0.5}
+                value={sipReturnPct}
+                onChange={e => setSipReturnPct(Number(e.target.value))}
+                className="w-full h-2 rounded-full appearance-none cursor-pointer accent-[#065f46]"
+              />
+              <div className="flex justify-between text-[11px] text-[#71717a] mt-1">
+                <span>4% (Conservative)</span>
+                <span>12% (Nifty 50 Historical)</span>
+                <span>18% (Aggressive)</span>
+              </div>
+            </div>
+
+            {/* Side-by-Side Comparison */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              {/* Option A: Borrow */}
+              <div className="bg-white rounded-xl p-4 border border-red-200 shadow-xs">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <span className="w-4 h-4 bg-red-100 text-red-700 rounded-full flex items-center justify-center text-xs font-bold border border-red-200">✕</span>
+                  <span className="text-xs font-bold text-red-800 uppercase tracking-wide">Path A: Take the Loan</span>
+                </div>
+                <p className="text-xs text-[#71717a] mb-0.5">Monthly outflow for {simulatedTenure} mo:</p>
+                <p className="text-lg font-bold text-red-600 mb-3">{formatEMI(sipComparison.monthlyInvestment)}/mo</p>
+                <div className="space-y-1.5 text-xs border-t border-red-100 pt-2 text-[#52525b]">
+                  <div className="flex justify-between">
+                    <span>Total cash paid:</span>
+                    <span className="font-semibold text-[#18181b]">{formatCurrency(sipLoanCost.totalOutflow, true)}</span>
+                  </div>
+                  <div className="flex justify-between text-red-600">
+                    <span>Interest lost forever:</span>
+                    <span className="font-semibold">-{formatCurrency(sipLoanCost.totalInterest, true)}</span>
+                  </div>
+                  <div className="flex justify-between pt-1 border-t border-dashed border-red-200">
+                    <span>Net wealth created:</span>
+                    <span className="font-bold text-[#71717a]">₹0</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Option B: Invest */}
+              <div className="bg-white rounded-xl p-4 border border-emerald-300 shadow-xs">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <span className="w-4 h-4 bg-emerald-100 text-[#065f46] rounded-full flex items-center justify-center text-xs font-bold border border-emerald-200">✓</span>
+                  <span className="text-xs font-bold text-[#065f46] uppercase tracking-wide">Path B: Invest in SIP</span>
+                </div>
+                <p className="text-xs text-[#71717a] mb-0.5">Monthly deposit for {simulatedTenure} mo:</p>
+                <p className="text-lg font-bold text-[#065f46] mb-3">{formatEMI(sipComparison.monthlyInvestment)}/mo</p>
+                <div className="space-y-1.5 text-xs border-t border-emerald-100 pt-2 text-[#52525b]">
+                  <div className="flex justify-between">
+                    <span>Total principal saved:</span>
+                    <span className="font-semibold text-[#18181b]">{formatCurrency(sipComparison.totalInvested, true)}</span>
+                  </div>
+                  <div className="flex justify-between text-[#065f46]">
+                    <span>Compounding returns:</span>
+                    <span className="font-semibold">+{formatCurrency(sipComparison.wealthGain, true)}</span>
+                  </div>
+                  <div className="flex justify-between pt-1 border-t border-dashed border-emerald-200 text-[#065f46]">
+                    <span className="font-bold">Portfolio accumulated:</span>
+                    <span className="font-extrabold text-base">{formatCurrency(sipComparison.futureValue, true)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Wealth Gap Insight Callout */}
+            <div className="bg-[#e6f4ec] text-[#064e3b] rounded-xl p-4 flex items-start gap-3 shadow-xs border border-[#a7f3d0]">
+              <div className="text-2xl mt-0.5">💡</div>
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[#065f46] mb-0.5">The Opportunity Gap</h4>
+                <p className="text-xs leading-relaxed text-[#064e3b]">
+                  Investing this EMI builds a <strong>{formatCurrency(sipComparison.futureValue, true)}</strong> nest egg while saving you <strong>{formatCurrency(sipLoanCost.totalInterest, true)}</strong> in loan interest.
+                  That is a total net wealth advantage of <span className="underline font-bold text-[#065f46] text-sm">{formatCurrency(sipComparison.netWealthDifference, true)}</span> in your pocket over {simulatedTenure} months.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Stress Test */}
+          <div className="bg-white rounded-xl border border-[#eae3d9] p-5 shadow-xs">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-sm font-bold text-[#18181b]">Stress Test — What Could Go Wrong?</h3>
+              <ConfidenceDot level={stress.confidence} />
+            </div>
+            <div className="space-y-4">
+              {[
+                { label: 'Baseline', pct: stress.baselineRatio, cls: stress.baselineClassification, detail: `${formatEMI(stress.numerator)} / ${formatCurrency(income, true)} income` },
+                { label: '−20% income shock', pct: stress.incomeShock.stressedRatioPct, cls: stress.incomeShock.classification, detail: stress.incomeShock.explanation },
+                { label: '+2% rate shock', pct: stress.rateShock.stressedRatioPct, cls: stress.rateShock.classification, detail: stress.rateShock.explanation },
+              ].map(item => (
+                <div key={item.label}>
+                  <div className="flex justify-between text-xs mb-1.5">
+                    <span className="text-[#18181b] font-medium">{item.label}</span>
+                  </div>
+                  <StressBar pct={item.pct} classification={item.cls} />
+                  <p className="text-xs text-[#71717a] mt-1 leading-relaxed">{item.detail}</p>
+                </div>
+              ))}
+            </div>
+            {/* Scale legend */}
+            <div className="mt-4 pt-3 border-t border-[#eae3d9] flex gap-3 flex-wrap">
+              {[
+                ['≤35%', 'Comfortable', 'text-emerald-800'],
+                ['36–45%', 'Tight', 'text-amber-800'],
+                ['46–55%', 'Stressed', 'text-orange-800'],
+                ['>55%', 'Unsustainable', 'text-red-700'],
+              ].map(([range, label, color]) => (
+                <span key={label} className={`text-xs font-medium ${color}`}>{range}: {label}</span>
+              ))}
+            </div>
+          </div>
+
+          {/* Risk Signals */}
+          {(decision.hardStopsTriggered.length > 0 || decision.softSignalsTriggered.length > 0) && (
+            <div className="bg-white rounded-xl border border-[#eae3d9] p-5 shadow-xs">
+              <h3 className="text-sm font-bold text-[#18181b] mb-3">Risk Signals</h3>
+              {decision.hardStopsTriggered.map((s, i) => (
+                <div key={i} className="flex gap-2 bg-[#fef2f2] border border-[#fecaca] rounded-lg p-3 mb-2 text-sm text-[#991b1b]">
+                  <span>🛑</span><span>{s}</span>
+                </div>
+              ))}
+              {decision.softSignalsTriggered.map((s, i) => (
+                <div key={i} className="flex gap-2 bg-[#fffbeb] border border-[#fde68a] rounded-lg p-3 mb-2 text-sm text-[#92400e]">
+                  <span>⚠</span><span>{s}</span>
+                </div>
+              ))}
+              {decision.escalated && (
+                <p className="text-xs text-amber-800 font-medium mt-1">
+                  ≥2 soft signals → verdict escalated one notch toward caution.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Product Route */}
+          <div className="bg-white rounded-xl border border-[#eae3d9] p-5 shadow-xs">
+            <h3 className="text-sm font-bold text-[#18181b] mb-2">Recommended Loan Product</h3>
+            <p className="text-base font-bold text-[#5a2045]">{productRoute.recommendedRoute}</p>
+            <p className="text-sm text-[#3f3f46] mt-1">{productRoute.rationale}</p>
+            {productRoute.securityWarning && (
+              <p className="text-xs text-red-600 mt-2 font-medium">⚠ {productRoute.securityWarning}</p>
+            )}
+            {productRoute.tradeoffs.length > 0 && (
+              <div className="mt-3 space-y-1">
+                {productRoute.tradeoffs.map((t, i) => <p key={i} className="text-xs text-[#71717a]">• {t}</p>)}
+              </div>
+            )}
+          </div>
+
+          {/* CTA */}
+          <div className="text-center py-4">
+            <button
+              onClick={onShowCard}
+              className="bg-[#5a2045] hover:bg-[#481837] text-white font-semibold text-base px-8 py-3 rounded-xl shadow-xs transition-all hover:shadow active:scale-[0.98] cursor-pointer"
+            >
+              View Negotiation Card →
+            </button>
+            <p className="text-xs text-[#71717a] mt-2">Printable one-page summary to take to a lender</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
