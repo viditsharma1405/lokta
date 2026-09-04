@@ -4,7 +4,7 @@
 
 import type { BorrowerProfile, IncomeType } from '../types/profile';
 import {
-  DOC_HAIRCUT_LENDER,
+  DOC_RECOGNITION,
   EXPENSE_DEFAULT_PCT,
   EXPENSE_DEFAULT_RANGE_DELTA,
   EXISTING_EMI_UNKNOWN_FLOOR_PCT,
@@ -42,9 +42,11 @@ export function computeClaimedIncome(
 }
 
 /**
- * Compute eligible lender income:
- * documentedIncome + haircutLender × undocumentedPortion
- * haircut = 10% (unsecured) / 40% (secured)
+ * Compute lender-recognized income:
+ * Replaces the blanket 10% haircut with an uncertainty-aware, documentation-based model:
+ * 1. Fully documented: 100% recognized (no haircut).
+ * 2. Partially documented: documented base recognized 100% + conservative haircut on unverified surplus.
+ * 3. Completely undocumented: conservative base surrogate capped at informal benchmark ceiling.
  */
 export function computeEligibleIncomeLender(
   documentedIncome: number,
@@ -53,13 +55,74 @@ export function computeEligibleIncomeLender(
   coApplicantIncome = 0
 ): {
   undocumentedPortion: number;
+  recognizedUndocumented: number;
   haircut: number;
   eligibleIncomeLender: number;
+  method: 'fully_documented' | 'partially_documented' | 'conservative_undocumented';
+  explanation: string;
 } {
   const undocumentedPortion = Math.max(0, claimedTotalIncome - documentedIncome);
-  const haircut = isSecured ? DOC_HAIRCUT_LENDER.secured : DOC_HAIRCUT_LENDER.unsecured;
-  const eligibleIncomeLender = documentedIncome + haircut * undocumentedPortion + coApplicantIncome;
-  return { undocumentedPortion, haircut, eligibleIncomeLender };
+
+  // 1. Fully documented: no undocumented portion
+  if (undocumentedPortion === 0 || documentedIncome >= claimedTotalIncome) {
+    const eligibleIncomeLender = documentedIncome + coApplicantIncome;
+    return {
+      undocumentedPortion: 0,
+      recognizedUndocumented: 0,
+      haircut: 0,
+      eligibleIncomeLender,
+      method: 'fully_documented',
+      explanation: 'Your reported income is fully documented, so no documentation haircut is applied.',
+    };
+  }
+
+  // 2. Partially documented: documented base recognized 100%, conservative treatment on unverified surplus
+  if (documentedIncome > 0) {
+    const rate = isSecured
+      ? DOC_RECOGNITION.partialUndocumentedRateSecured
+      : DOC_RECOGNITION.partialUndocumentedRateUnsecured;
+    const recognizedUndocumented = Math.min(
+      DOC_RECOGNITION.partialUndocumentedCap,
+      undocumentedPortion * rate
+    );
+    const eligibleIncomeLender = documentedIncome + recognizedUndocumented + coApplicantIncome;
+    return {
+      undocumentedPortion,
+      recognizedUndocumented,
+      haircut: rate,
+      eligibleIncomeLender,
+      method: 'partially_documented',
+      explanation: `₹${Math.round(documentedIncome).toLocaleString('en-IN')} of your ₹${Math.round(claimedTotalIncome).toLocaleString('en-IN')} reported income is documented. The remaining ₹${Math.round(undocumentedPortion).toLocaleString('en-IN')} is treated conservatively for lender-side capacity.`,
+    };
+  }
+
+  // 3. Completely undocumented (documentedIncome === 0)
+  const baseRate = isSecured
+    ? DOC_RECOGNITION.undocumentedBaseRateSecured
+    : DOC_RECOGNITION.undocumentedBaseRateUnsecured;
+  const cap = isSecured
+    ? DOC_RECOGNITION.undocumentedCapSecured
+    : DOC_RECOGNITION.undocumentedCapUnsecured;
+
+  const rawRecognized = claimedTotalIncome * baseRate;
+  const recognizedUndocumented = Math.min(cap, rawRecognized);
+  const eligibleIncomeLender = recognizedUndocumented + coApplicantIncome;
+
+  let explanation: string;
+  if (claimedTotalIncome * baseRate > cap) {
+    explanation = `Your income is not formally documented. For unverified ${isSecured ? 'secured' : 'unsecured'} borrowing, lenders apply a conservative base assessment capped at ₹${cap.toLocaleString('en-IN')}/month. High unverified cash amounts cannot be recognized without formal documents (ITR, bank credits, or GST).`;
+  } else {
+    explanation = 'Your income is not formally documented, so lender capacity is estimated conservatively and confidence is lower.';
+  }
+
+  return {
+    undocumentedPortion,
+    recognizedUndocumented,
+    haircut: baseRate,
+    eligibleIncomeLender,
+    method: 'conservative_undocumented',
+    explanation,
+  };
 }
 
 /**

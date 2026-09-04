@@ -131,8 +131,9 @@ export const PERSONA_ANITA: BorrowerProfile = {
   claimedTotalIncome: 26000,             // lower bound of range (gig, high volatility) — DERIVED
   undocumentedPortion: 26000,            // 26000 − 0 — DERIVED
 
-  // Lender: unsecured, haircut 10%: 0 + 0.10×26000
-  eligibleIncomeLender: 2600,            // DERIVED
+  // Lender: completely undocumented unsecured (conservative base surrogate 35% of ₹26,000 = ₹9,100)
+  // Not a blanket 10% haircut. Note: Anita still reaches DONT_BORROW due to severe high-cost debt burden (33.65% > 30%).
+  eligibleIncomeLender: 9100,            // DERIVED via conservative undocumented base surrogate (35%)
   eligibleIncomeSafe: 26000,             // DERIVED
 
   // High-cost debt — FACT: ₹35,000 outstanding at 30%+ APR

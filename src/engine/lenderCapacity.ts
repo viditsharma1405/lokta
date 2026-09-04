@@ -5,7 +5,7 @@
 import type { BorrowerProfile } from '../types/profile';
 import type { LenderCapacityResult } from '../types/calculations';
 import type { ConfidenceLevel } from '../types/results';
-import { FOIR, LTV, COLLATERAL_HAIRCUT, TENURE_DEFAULTS, DOC_HAIRCUT_LENDER } from '../rules/constants';
+import { FOIR, LTV, COLLATERAL_HAIRCUT, TENURE_DEFAULTS, DOC_RECOGNITION } from '../rules/constants';
 import { principalFromEMI } from './emi';
 import { isSecuredProduct } from './income';
 
@@ -105,24 +105,35 @@ export function computeLenderCapacity(
   if (secured && profile.collateral.statedValue === null) {
     missingInputs.push('collateralValue (no LTV computation possible)');
   }
-  if (profile.documentationStatus === 'unknown') missingInputs.push('documentationStatus');
+  if (profile.documentationStatus === 'unknown' || profile.documentationStatus === 'none' || profile.documentedIncome === 0) {
+    missingInputs.push('documentationStatus');
+  }
 
-  const confidence: ConfidenceLevel =
+  let confidence: ConfidenceLevel =
     missingInputs.length === 0 ? 'HIGH' :
     missingInputs.length <= 2 ? 'MEDIUM' : 'LOW';
 
-  const haircutPct = (secured ? DOC_HAIRCUT_LENDER.secured : DOC_HAIRCUT_LENDER.unsecured) * 100;
+  // Completely undocumented income or large unverified income produces LOW confidence
+  if (profile.documentedIncome === 0 && (profile.documentationStatus === 'none' || profile.claimedTotalIncome > DOC_RECOGNITION.undocumentedCapUnsecured)) {
+    confidence = 'LOW';
+  }
+
   let docExplanation = '';
   if (profile.undocumentedPortion === 0 || profile.documentationStatus === 'full' || profile.incomeType === 'salaried') {
-    docExplanation = `Your ₹${Math.round(profile.claimedTotalIncome).toLocaleString('en-IN')} monthly income is treated as fully documented, so no documentation haircut is applied.`;
+    docExplanation = 'Your reported income is fully documented, so no documentation haircut is applied.';
   } else if (profile.documentedIncome > 0 && profile.undocumentedPortion > 0) {
-    docExplanation = `₹${Math.round(profile.documentedIncome).toLocaleString('en-IN')} is documented and ₹${Math.round(profile.undocumentedPortion).toLocaleString('en-IN')} is undocumented. For this ${secured ? 'secured' : 'unsecured'} loan, ${haircutPct.toFixed(0)}% of the undocumented portion is counted.`;
+    const ratePct = ((secured ? DOC_RECOGNITION.partialUndocumentedRateSecured : DOC_RECOGNITION.partialUndocumentedRateUnsecured) * 100).toFixed(0);
+    docExplanation = `₹${Math.round(profile.documentedIncome).toLocaleString('en-IN')} of your ₹${Math.round(profile.claimedTotalIncome).toLocaleString('en-IN')} reported income is documented. The remaining ₹${Math.round(profile.undocumentedPortion).toLocaleString('en-IN')} is treated conservatively (${ratePct}% recognized) for lender-side capacity.`;
   } else {
-    docExplanation = `Income is unverified/undocumented. For this ${secured ? 'secured' : 'unsecured'} loan, ${haircutPct.toFixed(0)}% of claimed income is counted.`;
+    const capVal = secured ? DOC_RECOGNITION.undocumentedCapSecured : DOC_RECOGNITION.undocumentedCapUnsecured;
+    const isCapped = profile.claimedTotalIncome > capVal;
+    docExplanation = isCapped
+      ? `Your income is not formally documented, so lender capacity is estimated conservatively (capped at ₹${capVal.toLocaleString('en-IN')}/month) and confidence is lower.`
+      : 'Your income is not formally documented, so lender capacity is estimated conservatively and confidence is lower.';
   }
 
   const drivers: string[] = [
-    `Eligible lender income: ₹${Math.round(profile.eligibleIncomeLender).toLocaleString('en-IN')}`,
+    `Lender-recognized income: ₹${Math.round(profile.eligibleIncomeLender).toLocaleString('en-IN')}`,
     `Documentation: ${docExplanation}`,
     `FOIR applied: ${(foir * 100).toFixed(0)}% (${profile.incomeType}${secured ? ', secured' : ''})`,
     `Max total debt service: ₹${Math.round(maxTotalDebtService).toLocaleString('en-IN')}`,

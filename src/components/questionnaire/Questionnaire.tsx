@@ -7,6 +7,7 @@ import {
   SELF_EMPLOYED_QUESTIONS,
   INFORMAL_QUESTIONS,
   CROSS_CUTTING_QUESTIONS,
+  DOCUMENTED_MONTHLY_INCOME_QUESTION,
   type QuestionDef,
 } from '../../questions/questionDefs';
 
@@ -285,6 +286,8 @@ export default function Questionnaire({ onComplete }: QuestionnaireProps) {
     if (answers.income_type === 'self_employed' && (answers.documentation_status === 'partial' || answers.documentation_status === 'full')) {
       const qItr = SELF_EMPLOYED_QUESTIONS.find(q => q.id === 'documented_income_itr');
       if (qItr) list.push(qItr);
+    } else if (answers.income_type !== 'self_employed' && answers.documentation_status === 'partial') {
+      list.push(DOCUMENTED_MONTHLY_INCOME_QUESTION);
     }
     return list;
   }, [answers.income_type, answers.documentation_status]);

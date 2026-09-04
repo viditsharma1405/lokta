@@ -60,7 +60,7 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
   const itrAnnual = num(answers.documented_income_itr);
   const rangeLow = num(answers.income_range_low);
   const rangeHigh = num(answers.income_range_high);
-  const explicitDocIncome = num(answers.documented_income) ?? num(answers.documentedIncome);
+  const explicitDocIncome = num(answers.documented_income) ?? num(answers.documentedIncome) ?? num(answers.documented_monthly_income);
   const explicitClaimedIncome = num(answers.claimed_total_income) ?? num(answers.claimedTotalIncome);
 
   let claimedTotalIncome: number;

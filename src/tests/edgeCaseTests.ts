@@ -453,15 +453,47 @@ const partialDoc = computeEligibleIncomeLender(60000, 90000, false, 0);
 assert('Income normalization: partially documented undocumented portion is ₹30,000', partialDoc.undocumentedPortion === 30000);
 assert('Income normalization: partially documented lender income is ₹63,000 (60k + 10% of 30k)', partialDoc.eligibleIncomeLender === 63000);
 
-// 3. Fully undocumented self-employed: ₹70K claimed, ₹0 documented → lender income ₹7K unsecured
-const undocUnsecured = computeEligibleIncomeLender(0, 70000, false, 0);
-assert('Income normalization: fully undocumented unsecured lender income is ₹7,000 (10% of 70k)', undocUnsecured.eligibleIncomeLender === 7000);
+// 3. Fully undocumented: claimed ₹30K, documented ₹0 → must NOT use blanket 10% (not ₹3,000)
+const undoc30k = computeEligibleIncomeLender(0, 30000, false, 0);
+assert('Income normalization: fully undocumented claimed ₹30k does NOT produce blanket ₹3k (produces ₹10,500 baseline surrogate)', undoc30k.eligibleIncomeLender === 10500 && undoc30k.eligibleIncomeLender !== 3000);
 
-// 4. Fully undocumented secured: ₹70K claimed, ₹0 documented → lender income ₹28K secured
+// 4. Fully undocumented secured: ₹70K claimed, ₹0 documented → lender income ₹28K secured (40% of 70k)
 const undocSecured = computeEligibleIncomeLender(0, 70000, true, 0);
 assert('Income normalization: fully undocumented secured lender income is ₹28,000 (40% of 70k)', undocSecured.eligibleIncomeLender === 28000);
 
-// 5. Row 16 complete scenario test via buildProfileFromAnswers and runCopilot
+// 5. ₹9 Lakh undocumented edge case: claimed ₹9,00,000, documented ₹0
+// System must NOT blindly conclude ₹90,000; must cap at ₹25,000 informal ceiling with LOW confidence
+const answers9L = {
+  monthly_income: 900000,
+  income_type: 'informal',
+  documentation_status: 'none',
+  requested_amount: 500000,
+  loan_purpose: 'personal_event',
+  existing_emi: 0,
+  essential_expenses: 100000,
+  high_cost_debt: 'none',
+  recent_bounce: 'no',
+};
+const profile9L = buildProfileFromAnswers(answers9L);
+const result9L = runCopilot(profile9L);
+assert('9L Edge Case: claimedTotalIncome is ₹9,00,000', profile9L.claimedTotalIncome === 900000);
+assert('9L Edge Case: documentedIncome is ₹0', profile9L.documentedIncome === 0);
+assert('9L Edge Case: undocumentedPortion is ₹9,00,000', profile9L.undocumentedPortion === 900000);
+assert('9L Edge Case: lender-recognized income is capped at ₹25,000 (NOT ₹90,000 blind multiplier)', profile9L.eligibleIncomeLender === 25000 && profile9L.eligibleIncomeLender !== 90000);
+assert('9L Edge Case: lender capacity confidence is strictly LOW', result9L.lenderCapacity.confidence === 'LOW');
+assert('9L Edge Case: driver contains conservative cap explanation', result9L.lenderCapacity.drivers.some(d => d.includes('capped at ₹25,000/month')));
+
+// 6. Anita regression under new undocumented model
+const anitaEdgeProfile = PERSONA_ANITA;
+const anitaEdgeResult = runCopilot(anitaEdgeProfile);
+assert('Anita regression: claimed income is ₹26,000', anitaEdgeProfile.claimedTotalIncome === 26000);
+assert('Anita regression: lender-recognized income is ₹9,100 (NOT ₹2,600)', anitaEdgeProfile.eligibleIncomeLender === 9100 && anitaEdgeProfile.eligibleIncomeLender !== 2600);
+assert('Anita regression: high-cost debt payment remains ₹8,750', anitaEdgeProfile.highCostDebtEMI === 8750);
+assert('Anita regression: high-cost debt burden is 33.65% (>30% threshold)', anitaEdgeProfile.highCostDebtEMI / anitaEdgeProfile.eligibleIncomeSafe > 0.30);
+assert('Anita regression: decision verdict remains strictly DONT_BORROW', anitaEdgeResult.decision.verdict === 'DONT_BORROW');
+assert('Anita regression: severe hard stop remains triggered', anitaEdgeResult.decision.hardStopsTriggered.some(s => s.includes('SEVERE')));
+
+// 7. Row 16 complete scenario test via buildProfileFromAnswers and runCopilot
 const answersRow16 = {
   monthly_income: 90000,
   income_type: 'self_employed',
@@ -503,7 +535,7 @@ const answersPartial16 = {
 const profilePartial16 = buildProfileFromAnswers(answersPartial16);
 assert('Partially documented via answers: documentedIncome is ₹60,000', profilePartial16.documentedIncome === 60000);
 assert('Partially documented via answers: undocumentedPortion is ₹30,000', profilePartial16.undocumentedPortion === 30000);
-assert('Partially documented via answers: eligibleIncomeLender is ₹63,000', profilePartial16.eligibleIncomeLender === 63000);
+assert('Partially documented via answers: eligibleIncomeLender is ₹63,000 (60k + 10% of 30k)', profilePartial16.eligibleIncomeLender === 63000);
 
 // Partially documented via annual ITR question
 const answersPartialITR = {
@@ -515,7 +547,7 @@ const profilePartialITR = buildProfileFromAnswers(answersPartialITR);
 assert('Partially documented via annual ITR: documentedIncome is ₹60,000', profilePartialITR.documentedIncome === 60000);
 assert('Partially documented via annual ITR: eligibleIncomeLender is ₹63,000', profilePartialITR.eligibleIncomeLender === 63000);
 
-// 6. Verify that changing documentation status does NOT alter borrower-safe income calculation
+// 8. Verify that changing documentation status does NOT alter borrower-safe income calculation
 const answersUndoc16 = {
   ...answersRow16,
   documentation_status: 'none',
@@ -524,7 +556,7 @@ const profileUndoc16 = buildProfileFromAnswers(answersUndoc16);
 assert('Safe capacity preservation: full doc safe income is ₹90,000', profileRow16.eligibleIncomeSafe === 90000);
 assert('Safe capacity preservation: undocumented safe income remains ₹90,000', profileUndoc16.eligibleIncomeSafe === 90000);
 assert('Safe capacity preservation: safe income is unaffected by documentation haircut', profileRow16.eligibleIncomeSafe === profileUndoc16.eligibleIncomeSafe);
-assert('Lender income differs between full doc and undocumented', profileRow16.eligibleIncomeLender === 90000 && profileUndoc16.eligibleIncomeLender === 9000);
+assert('Lender income differs between full doc (₹90k) and undocumented (capped at ₹25k)', profileRow16.eligibleIncomeLender === 90000 && profileUndoc16.eligibleIncomeLender === 25000);
 
 // ── Summary ──────────────────────────────────────────────────────────────────
 console.log('\n═══════════════════════════════════════════════════════════════');

@@ -624,3 +624,21 @@ export const CROSS_CUTTING_QUESTIONS: QuestionDef[] = [
     group: 'household',
   },
 ];
+
+// ── DOCUMENTED MONTHLY INCOME (adaptive follow-up for partial documentation) ──
+export const DOCUMENTED_MONTHLY_INCOME_QUESTION: QuestionDef = {
+  id: 'documented_monthly_income',
+  label: 'If you have income documentation, approximately how much monthly income does it support?',
+  helpText: 'Monthly income backed by bank statement credits, salary slips, or official receipts.',
+  whyWeAsk: 'Documented income is recognized fully by lenders, while undocumented income is treated conservatively.',
+  type: 'currency',
+  placeholder: '40,000',
+  prefix: '₹',
+  suffix: '/month',
+  allowUnknown: true,
+  unknownLabel: 'Not sure of exact documented amount',
+  affects: ['lenderCapacity'],
+  reason: 'Documented portion is recognized at 100%; only the undocumented portion receives conservative treatment.',
+  group: 'income',
+};
+

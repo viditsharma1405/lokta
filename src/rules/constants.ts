@@ -30,11 +30,29 @@ export const LTV = {
 // Source: My judgement (self-reported values are unverified)
 export const COLLATERAL_HAIRCUT = 0.20;
 
-// ── Documentation Haircuts for Lender Income ─────────────────────────────────
-// Source: My judgement
+// ── Documentation Recognition for Lender-Likely Income ──────────────────────
+// Source: Product judgement (NOT an RBI mandate)
+// Replaces the blanket 10% haircut with an uncertainty-aware model:
+// 1. Fully documented: 100% recognized (undocumented portion = 0).
+// 2. Partially documented: documented base recognized at 100%; unverified surplus recognized conservatively (10% unsecured / 40% secured).
+// 3. Completely undocumented: conservative base surrogate (35% unsecured / 40% secured) capped at informal ceiling (₹25,000/mo unsecured / ₹60,000/mo secured).
+export const DOC_RECOGNITION = {
+  // Completely undocumented baseline surrogate (documentedIncome === 0)
+  undocumentedBaseRateUnsecured: 0.35,  // 35% of claimed income (aligned with informal FOIR 35%)
+  undocumentedCapUnsecured: 25000,      // ₹25,000/month cap (aligned with RBI microfinance benchmark of ₹3L/year)
+  undocumentedBaseRateSecured: 0.40,    // 40% baseline surrogate when secured by collateral
+  undocumentedCapSecured: 60000,        // ₹60,000/month cap for secured loans
+
+  // Partially documented undocumented surplus recognition (documentedIncome > 0)
+  partialUndocumentedRateUnsecured: 0.10, // 10% on the unverified slice above documented base
+  partialUndocumentedRateSecured: 0.40,   // 40% on unverified slice when secured (Ravi LAP)
+  partialUndocumentedCap: 25000,          // Cap on unverified slice recognition
+} as const;
+
+// Backward-compatible alias for existing references
 export const DOC_HAIRCUT_LENDER = {
-  unsecured: 0.10,   // 10% of undocumented portion counted
-  secured: 0.40,     // 40% of undocumented portion counted (collateral backs the loan)
+  unsecured: DOC_RECOGNITION.partialUndocumentedRateUnsecured,
+  secured: DOC_RECOGNITION.partialUndocumentedRateSecured,
 } as const;
 
 // ── Retention Factors (Safe Capacity) ────────────────────────────────────────

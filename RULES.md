@@ -18,18 +18,43 @@
 
 **Impact**: Claimed total income feeds into safe capacity. A higher estimate inflates the safe amount.
 
-### Eligible Income — Lender
+### Lender-Recognized Income (Documentation-Based, Uncertainty-Aware Model)
 
-```
-eligibleIncomeLender = documentedIncome + haircut × undocumentedPortion + coApplicantIncome
-```
+> **Important**: The documentation treatment is a product judgement for this borrower-side assessment, not an RBI-mandated haircut. RBI does not mandate a blanket 10% undocumented income rule.
 
-| Product | Haircut of undocumented portion | Source |
-|---------|--------------------------------|--------|
-| Unsecured | 10% | My judgement |
-| Secured | 40% | My judgement |
+Instead of a blanket linear percentage on claimed income, the engine uses an uncertainty-aware model based on factual documentation evidence:
 
-**Impact**: Lender income determines FOIR-based capacity. Lower haircut → lower lender-likely amount.
+1. **Fully Documented Income (`undocumentedPortion = 0`)**:
+   - **What**: 100% of documented income is recognized (`lenderRecognizedIncome = documentedIncome + coApplicantIncome`).
+   - **Value**: Full recognition (0% haircut).
+   - **Why**: The borrower has provided complete proof (ITR / salary slips / bank statements) matching or exceeding claimed cash flow.
+   - **Source**: Product judgement / lending fact.
+
+2. **Partially Documented Income (`documentedIncome > 0 && undocumentedPortion > 0`)**:
+   - **What**: Documented base is recognized at 100%; only the unverified surplus portion (`undocumentedPortion = claimedTotalIncome - documentedIncome`) receives conservative treatment.
+   - **Value**:
+     - Unsecured: 10% of undocumented surplus (capped at ₹25,000/mo).
+     - Secured (backed by collateral, e.g. LAP): 40% of undocumented surplus.
+   - **Why**: The documented core establishes verified creditworthiness; unverified cash surplus is discounted conservatively.
+   - **Source**: Product judgement.
+
+3. **Completely Undocumented Income (`documentedIncome = 0`)**:
+   - **What**: Does NOT use a blanket 10% multiplication on claimed income. Instead, uses a conservative base surrogate with an informal benchmark ceiling, and flags lender capacity confidence as `LOW`.
+   - **Value**:
+     - Unsecured: 35% baseline surrogate (aligned with informal FOIR 35%), strictly capped at ₹25,000/month (aligned with the RBI microfinance household threshold of ₹3,00,000/year).
+     - Secured: 40% baseline surrogate, capped at ₹60,000/month.
+   - **Why**: For typical informal earnings (e.g. ₹20k–₹35k), informal/MFI lenders evaluate realistic cash flow surrogates rather than driving income to poverty-line levels (e.g. ₹2,600 or ₹3,000). For high claimed cash incomes (e.g. ₹9,00,000/month), unverified cash cannot scale without formal tax/bank documents.
+   - **Source**: Product judgement.
+
+| Documentation Status | Loan Type | Recognition Formula | Ceiling Cap | Confidence | Source |
+|----------------------|-----------|---------------------|-------------|------------|--------|
+| Fully Documented | Any | `100% × documentedIncome` | None | HIGH | Product judgement |
+| Partially Documented | Unsecured | `documentedIncome + 10% × undocumentedPortion` | ₹25,000 on surplus | MEDIUM | Product judgement |
+| Partially Documented | Secured | `documentedIncome + 40% × undocumentedPortion` | ₹25,000 on surplus | MEDIUM / HIGH | Product judgement |
+| Completely Undocumented | Unsecured | `min(₹25,000, 35% × claimedTotalIncome)` | ₹25,000/mo | LOW | Product judgement |
+| Completely Undocumented | Secured | `min(₹60,000, 40% × claimedTotalIncome)` | ₹60,000/mo | LOW / MEDIUM | Product judgement |
+
+**Impact**: Lender-recognized income determines FOIR-based capacity (`maxTotalDebtService = lenderRecognizedIncome × FOIR`).
 
 ### Eligible Income — Safe (Borrower)
 
