@@ -30,30 +30,46 @@ export const LTV = {
 // Source: My judgement (self-reported values are unverified)
 export const COLLATERAL_HAIRCUT = 0.20;
 
-// ── Documentation Recognition for Lender-Likely Income ──────────────────────
-// Source: Product judgement (NOT an RBI mandate)
-// Replaces the blanket 10% haircut with an uncertainty-aware model:
-// 1. Fully documented: 100% recognized (undocumented portion = 0).
-// 2. Partially documented: documented base recognized at 100%; unverified surplus recognized conservatively (10% unsecured / 40% secured).
-// 3. Completely undocumented: conservative base surrogate (35% unsecured / 40% secured) capped at informal ceiling (₹25,000/mo unsecured / ₹60,000/mo secured).
-export const DOC_RECOGNITION = {
-  // Completely undocumented baseline surrogate (documentedIncome === 0)
-  undocumentedBaseRateUnsecured: 0.35,  // 35% of claimed income (aligned with informal FOIR 35%)
-  undocumentedCapUnsecured: 25000,      // ₹25,000/month cap (aligned with RBI microfinance benchmark of ₹3L/year)
-  undocumentedBaseRateSecured: 0.40,    // 40% baseline surrogate when secured by collateral
-  undocumentedCapSecured: 60000,        // ₹60,000/month cap for secured loans
-
-  // Partially documented undocumented surplus recognition (documentedIncome > 0)
-  partialUndocumentedRateUnsecured: 0.10, // 10% on the unverified slice above documented base
-  partialUndocumentedRateSecured: 0.40,   // 40% on unverified slice when secured (Ravi LAP)
-  partialUndocumentedCap: 25000,          // Cap on unverified slice recognition
+// ── Documentation Recognition Tiers for Lender-Likely Income ──────────────────
+// Source: Product judgement for a borrower-side assessment (NOT an RBI mandate).
+// RBI does not mandate an undocumented income haircut or cap.
+//
+// Tiers determine recognition rate for the UNDOCUMENTED portion of claimed income:
+// - Strong (75%): Partial records + stable income or business tenure >= 3 years.
+// - Moderate (50%): Established business (>= 3 years) or steady income with partial records or secured backing.
+// - Weak (25%): Irregular / gig work with no formal records (e.g. Anita).
+// - Uncertain (15%, range 0–25%): Unknown documentation or uncorroborated volatile income.
+export const DOC_RECOGNITION_TIERS = {
+  strong: {
+    rate: 0.75,
+    range: { low: 0.60, high: 0.80 },
+    label: 'Strong corroboration / highly stable',
+    description: 'Backed by bank deposits, invoices, or ≥3yr stable operations (75% recognized).',
+  },
+  moderate: {
+    rate: 0.50,
+    range: { low: 0.40, high: 0.60 },
+    label: 'Moderate corroboration / established stable income',
+    description: 'Established business or steady income with partial records or secured backing (50% recognized).',
+  },
+  weak: {
+    rate: 0.25,
+    range: { low: 0.15, high: 0.35 },
+    label: 'Weak corroboration / volatile income',
+    description: 'Irregular or gig work with no formal records; higher volatility (25% recognized).',
+  },
+  uncertain: {
+    rate: 0.15,
+    range: { low: 0.00, high: 0.25 },
+    label: 'Completely unsupported / unknown documentation',
+    description: 'Documentation status is unknown or unevidenced. Wide uncertainty band applied (15% base).',
+  },
 } as const;
 
-// Backward-compatible alias for existing references
-export const DOC_HAIRCUT_LENDER = {
-  unsecured: DOC_RECOGNITION.partialUndocumentedRateUnsecured,
-  secured: DOC_RECOGNITION.partialUndocumentedRateSecured,
-} as const;
+export type RecognitionTierKey = keyof typeof DOC_RECOGNITION_TIERS;
+
+// Backward compatibility alias for any remaining imports
+export const DOC_RECOGNITION = DOC_RECOGNITION_TIERS;
 
 // ── Retention Factors (Safe Capacity) ────────────────────────────────────────
 // Source: My judgement. Base rates, before adjustments.

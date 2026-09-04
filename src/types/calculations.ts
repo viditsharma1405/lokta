@@ -3,6 +3,18 @@ import type { ConfidenceLevel, CalculationOutput } from './results';
 export type Verdict = 'BORROW' | 'BORROW_LESS' | 'DONT_BORROW';
 export type StressClassification = 'Comfortable' | 'Tight' | 'Stressed' | 'Unsustainable';
 
+export interface LenderDocBreakdown {
+  claimedTotalIncome: number;
+  documentedIncome: number | null;
+  undocumentedPortion: number | null;
+  recognitionRate: number;
+  recognitionTierLabel: string;
+  recognitionRange?: { low: number; high: number };
+  recognizedUndocumented: number;
+  eligibleIncomeLender: number;
+  isProductJudgement: boolean;
+}
+
 export interface LenderCapacityResult extends CalculationOutput {
   foir: number;
   foirSupportedAmount: number;
@@ -11,6 +23,9 @@ export interface LenderCapacityResult extends CalculationOutput {
   availableNewEMI: number;
   maxTotalDebtService: number;
   lenderLikelyAmount: number;
+  lenderLikelyAmountRange?: { low: number; high: number };
+  lenderRecognizedIncomeRange?: { low: number; high: number };
+  docBreakdown?: LenderDocBreakdown;
   confidence: ConfidenceLevel;
   explanation: string;
   drivers: string[];

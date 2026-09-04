@@ -233,9 +233,11 @@ export default function ResultsDashboard({ profile, output: _output, personaName
     let dynamicDocumentedIncome = profile.documentedIncome;
     if (profile.incomeType === 'salaried' || profile.documentationStatus === 'full') {
       dynamicDocumentedIncome = income;
+    } else if (profile.documentationStatus === 'unknown' || profile.documentedIncome === null) {
+      dynamicDocumentedIncome = null;
     } else if (profile.documentationStatus === 'none') {
       dynamicDocumentedIncome = 0;
-    } else if (profile.documentationStatus === 'partial') {
+    } else if (profile.documentationStatus === 'partial' && profile.documentedIncome !== null) {
       dynamicDocumentedIncome = Math.min(income, profile.documentedIncome);
     }
 
@@ -243,7 +245,14 @@ export default function ResultsDashboard({ profile, output: _output, personaName
       dynamicDocumentedIncome,
       income,
       secured,
-      profile.coApplicantIncome
+      profile.coApplicantIncome,
+      {
+        documentationStatus: profile.documentationStatus,
+        incomeStability: profile.incomeStability,
+        businessTenure: profile.businessTenure,
+        employmentTenure: profile.employmentTenure,
+        isSecured: secured,
+      }
     );
     const eligibleIncomeSafe = computeEligibleIncomeSafe(income, profile.coApplicantIncome);
 
@@ -560,6 +569,11 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                 <ConfidenceDot level={lenderCapacity.confidence} />
               </div>
               <p className="text-2xl font-extrabold text-[#18181b]">{formatLakhs(lenderCapacity.lenderLikelyAmount)}</p>
+              {lenderCapacity.lenderLikelyAmountRange && (
+                <p className="text-xs text-[#52525b] mt-0.5">
+                  Range: {formatLakhs(lenderCapacity.lenderLikelyAmountRange.low)}–{formatLakhs(lenderCapacity.lenderLikelyAmountRange.high)}
+                </p>
+              )}
               <p className="text-xs text-[#71717a] mt-0.5">
                 Baseline at {defaultTenure}mo default · FOIR: {(lenderCapacity.foir * 100).toFixed(0)}%
               </p>
@@ -569,6 +583,9 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                   <span className="font-bold text-[#5a2045]">{formatLakhs(simulatedScenario.lenderCapacity.lenderLikelyAmount)}</span>
                 </div>
               )}
+              <div className="mt-2 text-[10px] text-[#71717a] bg-[#faf7f2] p-1.5 rounded border border-[#eae3d9] italic">
+                Product judgement — not an RBI-mandated haircut.
+              </div>
               <Expandable title="How this was calculated">
                 {lenderCapacity.drivers.map((d, i) => <p key={i}>• {d}</p>)}
               </Expandable>

@@ -2,9 +2,10 @@
 // Income Normalization — Section 3 of frozen rules
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { BorrowerProfile, IncomeType } from '../types/profile';
+import type { BorrowerProfile, IncomeType, IncomeStability, DocumentationStatus } from '../types/profile';
+import type { RecognitionTierKey } from '../rules/constants';
 import {
-  DOC_RECOGNITION,
+  DOC_RECOGNITION_TIERS,
   EXPENSE_DEFAULT_PCT,
   EXPENSE_DEFAULT_RANGE_DELTA,
   EXISTING_EMI_UNKNOWN_FLOOR_PCT,
@@ -41,87 +42,185 @@ export function computeClaimedIncome(
   return rangeLow ?? 0;
 }
 
+export interface RecognitionContext {
+  documentationStatus?: DocumentationStatus;
+  incomeStability?: IncomeStability;
+  businessTenure?: number;
+  employmentTenure?: string;
+  isSecured?: boolean;
+  hasRecords?: boolean;
+}
+
+export interface LenderIncomeCalculationResult {
+  undocumentedPortion: number | null;
+  recognizedUndocumented: number;
+  recognitionRate: number;
+  recognitionTier: RecognitionTierKey;
+  recognitionTierLabel: string;
+  haircut: number; // backward-compatibility alias for recognitionRate
+  eligibleIncomeLender: number;
+  eligibleIncomeRange?: { low: number; high: number };
+  method: 'fully_documented' | 'partially_documented' | 'conservative_undocumented' | 'unknown_documentation';
+  explanation: string;
+  isProductJudgement: true;
+}
+
+/**
+ * Determine the recognition tier for the undocumented portion based on available evidence.
+ * Tiers (Product Judgements):
+ * - strong: 75% recognition (60%–80% range)
+ * - moderate: 50% recognition (40%–60% range)
+ * - weak: 25% recognition (15%–35% range)
+ * - uncertain: 15% recognition (0%–25% range, low confidence)
+ */
+export function determineRecognitionTier(context?: RecognitionContext): RecognitionTierKey {
+  if (!context) return 'moderate';
+
+  const { documentationStatus, incomeStability, businessTenure, isSecured, hasRecords } = context;
+
+  // Unknown documentation -> widest uncertainty
+  if (documentationStatus === 'unknown') {
+    return 'uncertain';
+  }
+
+  const isStable = incomeStability === 'stable';
+  const isEstablished = (businessTenure ?? 0) >= 3;
+  const hasCorroboration = documentationStatus === 'partial' || hasRecords === true;
+
+  // Strong: partial records with BOTH stable earnings AND >=3yr established operations, or secured with >=3yr stable operations
+  if ((hasCorroboration && isStable && isEstablished) || (isSecured && isStable && isEstablished)) {
+    return 'strong';
+  }
+
+  // Moderate: established business, steady earnings, partial records, or secured loan
+  if (hasCorroboration || isEstablished || isStable || isSecured) {
+    return 'moderate';
+  }
+
+  // Weak: irregular, gig, or unstable informal earnings without formal documentation
+  if (incomeStability === 'unstable' || incomeStability === 'moderate' || documentationStatus === 'none') {
+    return 'weak';
+  }
+
+  return 'uncertain';
+}
+
 /**
  * Compute lender-recognized income:
- * Replaces the blanket 10% haircut with an uncertainty-aware, documentation-based model:
+ * Distinguishes claimed income from documented income.
  * 1. Fully documented: 100% recognized (no haircut).
- * 2. Partially documented: documented base recognized 100% + conservative haircut on unverified surplus.
- * 3. Completely undocumented: conservative base surrogate capped at informal benchmark ceiling.
+ * 2. Partially documented: documented base recognized 100% + conservative tier recognition on undocumented surplus.
+ * 3. Completely undocumented: conservative tier recognition based on stability/tenure/corroboration.
+ * 4. Unknown documentation: wide uncertainty range with LOW confidence.
  */
 export function computeEligibleIncomeLender(
-  documentedIncome: number,
+  documentedIncome: number | null,
   claimedTotalIncome: number,
-  isSecured: boolean,
-  coApplicantIncome = 0
-): {
-  undocumentedPortion: number;
-  recognizedUndocumented: number;
-  haircut: number;
-  eligibleIncomeLender: number;
-  method: 'fully_documented' | 'partially_documented' | 'conservative_undocumented';
-  explanation: string;
-} {
+  isSecured = false,
+  coApplicantIncome = 0,
+  context?: RecognitionContext
+): LenderIncomeCalculationResult {
+  const mergedContext: RecognitionContext = {
+    ...context,
+    isSecured: isSecured || context?.isSecured,
+  };
+
+  // Case 1: Unknown documentation ("I don't know")
+  if (documentedIncome === null || mergedContext.documentationStatus === 'unknown') {
+    const tier = DOC_RECOGNITION_TIERS.uncertain;
+    const recognizedUndocumented = claimedTotalIncome * tier.rate;
+    const eligibleIncomeLender = recognizedUndocumented + coApplicantIncome;
+    const eligibleIncomeRange = {
+      low: claimedTotalIncome * tier.range.low + coApplicantIncome,
+      high: claimedTotalIncome * tier.range.high + coApplicantIncome,
+    };
+    return {
+      undocumentedPortion: null,
+      recognizedUndocumented,
+      recognitionRate: tier.rate,
+      recognitionTier: 'uncertain',
+      recognitionTierLabel: tier.label,
+      haircut: tier.rate,
+      eligibleIncomeLender,
+      eligibleIncomeRange,
+      method: 'unknown_documentation',
+      explanation: 'Your income documentation is unknown, so lender capacity is estimated across a wide conservative band with lower confidence.',
+      isProductJudgement: true,
+    };
+  }
+
   const undocumentedPortion = Math.max(0, claimedTotalIncome - documentedIncome);
 
-  // 1. Fully documented: no undocumented portion
+  // Case 2: Fully documented (undocumentedPortion === 0 or documented >= claimed)
   if (undocumentedPortion === 0 || documentedIncome >= claimedTotalIncome) {
     const eligibleIncomeLender = documentedIncome + coApplicantIncome;
     return {
       undocumentedPortion: 0,
       recognizedUndocumented: 0,
+      recognitionRate: 1.0,
+      recognitionTier: 'strong',
+      recognitionTierLabel: 'Fully Documented (100% recognized)',
       haircut: 0,
       eligibleIncomeLender,
       method: 'fully_documented',
       explanation: 'Your reported income is fully documented, so no documentation haircut is applied.',
+      isProductJudgement: true,
     };
   }
 
-  // 2. Partially documented: documented base recognized 100%, conservative treatment on unverified surplus
+  // Case 3: Partially documented (documentedIncome > 0 && undocumentedPortion > 0)
   if (documentedIncome > 0) {
-    const rate = isSecured
-      ? DOC_RECOGNITION.partialUndocumentedRateSecured
-      : DOC_RECOGNITION.partialUndocumentedRateUnsecured;
-    const recognizedUndocumented = Math.min(
-      DOC_RECOGNITION.partialUndocumentedCap,
-      undocumentedPortion * rate
-    );
+    const tierKey = determineRecognitionTier({
+      ...mergedContext,
+      documentationStatus: mergedContext.documentationStatus ?? 'partial',
+    });
+    const tier = DOC_RECOGNITION_TIERS[tierKey];
+    const recognizedUndocumented = undocumentedPortion * tier.rate;
     const eligibleIncomeLender = documentedIncome + recognizedUndocumented + coApplicantIncome;
+    const eligibleIncomeRange = {
+      low: documentedIncome + (undocumentedPortion * tier.range.low) + coApplicantIncome,
+      high: documentedIncome + (undocumentedPortion * tier.range.high) + coApplicantIncome,
+    };
     return {
       undocumentedPortion,
       recognizedUndocumented,
-      haircut: rate,
+      recognitionRate: tier.rate,
+      recognitionTier: tierKey,
+      recognitionTierLabel: tier.label,
+      haircut: tier.rate,
       eligibleIncomeLender,
+      eligibleIncomeRange,
       method: 'partially_documented',
-      explanation: `₹${Math.round(documentedIncome).toLocaleString('en-IN')} of your ₹${Math.round(claimedTotalIncome).toLocaleString('en-IN')} reported income is documented. The remaining ₹${Math.round(undocumentedPortion).toLocaleString('en-IN')} is treated conservatively for lender-side capacity.`,
+      explanation: `₹${Math.round(documentedIncome).toLocaleString('en-IN')} of your ₹${Math.round(claimedTotalIncome).toLocaleString('en-IN')} reported income is documented. The remaining ₹${Math.round(undocumentedPortion).toLocaleString('en-IN')} is treated conservatively (${Math.round(tier.rate * 100)}% recognized) for lender-side capacity.`,
+      isProductJudgement: true,
     };
   }
 
-  // 3. Completely undocumented (documentedIncome === 0)
-  const baseRate = isSecured
-    ? DOC_RECOGNITION.undocumentedBaseRateSecured
-    : DOC_RECOGNITION.undocumentedBaseRateUnsecured;
-  const cap = isSecured
-    ? DOC_RECOGNITION.undocumentedCapSecured
-    : DOC_RECOGNITION.undocumentedCapUnsecured;
-
-  const rawRecognized = claimedTotalIncome * baseRate;
-  const recognizedUndocumented = Math.min(cap, rawRecognized);
+  // Case 4: Completely undocumented (documentedIncome === 0)
+  const tierKey = determineRecognitionTier({
+    ...mergedContext,
+    documentationStatus: 'none',
+  });
+  const tier = DOC_RECOGNITION_TIERS[tierKey];
+  const recognizedUndocumented = claimedTotalIncome * tier.rate;
   const eligibleIncomeLender = recognizedUndocumented + coApplicantIncome;
-
-  let explanation: string;
-  if (claimedTotalIncome * baseRate > cap) {
-    explanation = `Your income is not formally documented. For unverified ${isSecured ? 'secured' : 'unsecured'} borrowing, lenders apply a conservative base assessment capped at ₹${cap.toLocaleString('en-IN')}/month. High unverified cash amounts cannot be recognized without formal documents (ITR, bank credits, or GST).`;
-  } else {
-    explanation = 'Your income is not formally documented, so lender capacity is estimated conservatively and confidence is lower.';
-  }
+  const eligibleIncomeRange = {
+    low: (claimedTotalIncome * tier.range.low) + coApplicantIncome,
+    high: (claimedTotalIncome * tier.range.high) + coApplicantIncome,
+  };
 
   return {
     undocumentedPortion,
     recognizedUndocumented,
-    haircut: baseRate,
+    recognitionRate: tier.rate,
+    recognitionTier: tierKey,
+    recognitionTierLabel: tier.label,
+    haircut: tier.rate,
     eligibleIncomeLender,
+    eligibleIncomeRange,
     method: 'conservative_undocumented',
-    explanation,
+    explanation: `Your income is not formally documented, so lender capacity is estimated conservatively (${Math.round(tier.rate * 100)}% recognized) and confidence is lower.`,
+    isProductJudgement: true,
   };
 }
 

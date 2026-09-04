@@ -5,9 +5,9 @@
 import type { BorrowerProfile } from '../types/profile';
 import type { LenderCapacityResult } from '../types/calculations';
 import type { ConfidenceLevel } from '../types/results';
-import { FOIR, LTV, COLLATERAL_HAIRCUT, TENURE_DEFAULTS, DOC_RECOGNITION } from '../rules/constants';
+import { FOIR, LTV, COLLATERAL_HAIRCUT, TENURE_DEFAULTS } from '../rules/constants';
 import { principalFromEMI } from './emi';
-import { isSecuredProduct } from './income';
+import { isSecuredProduct, computeEligibleIncomeLender } from './income';
 
 function getLenderFOIR(profile: BorrowerProfile, isSecured: boolean): number {
   if (isSecured) return FOIR.secured;
@@ -98,14 +98,28 @@ export function computeLenderCapacity(
     ? Math.min(foirSupportedAmount, ltvSupportedAmount)
     : foirSupportedAmount;
 
-  // Confidence
+  const calcResult = computeEligibleIncomeLender(
+    profile.documentedIncome,
+    profile.claimedTotalIncome,
+    secured,
+    profile.coApplicantIncome,
+    {
+      documentationStatus: profile.documentationStatus,
+      incomeStability: profile.incomeStability,
+      businessTenure: profile.businessTenure,
+      employmentTenure: profile.employmentTenure,
+      isSecured: secured,
+    }
+  );
+
+  // Confidence assessment
   const missingInputs: string[] = [];
   if (profile.existingEMIIsDefaulted) missingInputs.push('existingEMI');
   if (profile.essentialExpensesIsDefaulted) missingInputs.push('expenses (affects context)');
   if (secured && profile.collateral.statedValue === null) {
     missingInputs.push('collateralValue (no LTV computation possible)');
   }
-  if (profile.documentationStatus === 'unknown' || profile.documentationStatus === 'none' || profile.documentedIncome === 0) {
+  if (profile.documentationStatus === 'unknown' || profile.documentedIncome === null) {
     missingInputs.push('documentationStatus');
   }
 
@@ -113,32 +127,51 @@ export function computeLenderCapacity(
     missingInputs.length === 0 ? 'HIGH' :
     missingInputs.length <= 2 ? 'MEDIUM' : 'LOW';
 
-  // Completely undocumented income or large unverified income produces LOW confidence
-  if (profile.documentedIncome === 0 && (profile.documentationStatus === 'none' || profile.claimedTotalIncome > DOC_RECOGNITION.undocumentedCapUnsecured)) {
-    confidence = 'LOW';
+  // Completely undocumented, unknown documentation, or large unverified income produces LOW confidence
+  if (
+    profile.documentedIncome === null ||
+    profile.documentationStatus === 'unknown' ||
+    profile.documentationStatus === 'none' ||
+    profile.documentedIncome === 0
+  ) {
+    if (profile.documentationStatus === 'full' || profile.incomeType === 'salaried') {
+      // salaried/full stays high/medium
+    } else {
+      confidence = 'LOW';
+    }
   }
 
-  let docExplanation = '';
-  if (profile.undocumentedPortion === 0 || profile.documentationStatus === 'full' || profile.incomeType === 'salaried') {
-    docExplanation = 'Your reported income is fully documented, so no documentation haircut is applied.';
-  } else if (profile.documentedIncome > 0 && profile.undocumentedPortion > 0) {
-    const ratePct = ((secured ? DOC_RECOGNITION.partialUndocumentedRateSecured : DOC_RECOGNITION.partialUndocumentedRateUnsecured) * 100).toFixed(0);
-    docExplanation = `₹${Math.round(profile.documentedIncome).toLocaleString('en-IN')} of your ₹${Math.round(profile.claimedTotalIncome).toLocaleString('en-IN')} reported income is documented. The remaining ₹${Math.round(profile.undocumentedPortion).toLocaleString('en-IN')} is treated conservatively (${ratePct}% recognized) for lender-side capacity.`;
-  } else {
-    const capVal = secured ? DOC_RECOGNITION.undocumentedCapSecured : DOC_RECOGNITION.undocumentedCapUnsecured;
-    const isCapped = profile.claimedTotalIncome > capVal;
-    docExplanation = isCapped
-      ? `Your income is not formally documented, so lender capacity is estimated conservatively (capped at ₹${capVal.toLocaleString('en-IN')}/month) and confidence is lower.`
-      : 'Your income is not formally documented, so lender capacity is estimated conservatively and confidence is lower.';
+  // Calculate range if documentation uncertainty exists
+  let lenderLikelyAmountRange: { low: number; high: number } | undefined;
+  let lenderRecognizedIncomeRange = calcResult.eligibleIncomeRange;
+
+  if (calcResult.eligibleIncomeRange && calcResult.method !== 'fully_documented') {
+    const availableNewEMI_low = Math.max(0, calcResult.eligibleIncomeRange.low * foir - totalExistingDebt);
+    const availableNewEMI_high = Math.max(0, calcResult.eligibleIncomeRange.high * foir - totalExistingDebt);
+    let lowAmount = principalFromEMI(availableNewEMI_low, fairRateMid, tenure);
+    let highAmount = principalFromEMI(availableNewEMI_high, fairRateMid, tenure);
+
+    if (secured && ltvSupportedAmount !== null) {
+      lowAmount = Math.min(lowAmount, ltvSupportedAmount);
+      highAmount = Math.min(highAmount, ltvSupportedAmount);
+    }
+    lenderLikelyAmountRange = { low: lowAmount, high: highAmount };
   }
+
+  const docExplanation = calcResult.explanation;
 
   const drivers: string[] = [
     `Lender-recognized income: ₹${Math.round(profile.eligibleIncomeLender).toLocaleString('en-IN')}`,
+    `Reported income: ₹${Math.round(profile.claimedTotalIncome).toLocaleString('en-IN')}`,
+    `Documented income: ${profile.documentedIncome === null ? 'Unknown ("I don\'t know")' : profile.documentedIncome === 0 ? 'None (₹0)' : `₹${Math.round(profile.documentedIncome).toLocaleString('en-IN')}`}`,
+    `Undocumented portion: ${profile.undocumentedPortion === null ? 'Unknown' : `₹${Math.round(profile.undocumentedPortion).toLocaleString('en-IN')}`}`,
+    `Conservative recognition of undocumented portion: ${Math.round(calcResult.recognitionRate * 100)}% (${calcResult.recognitionTierLabel})`,
     `Documentation: ${docExplanation}`,
     `FOIR applied: ${(foir * 100).toFixed(0)}% (${profile.incomeType}${secured ? ', secured' : ''})`,
     `Max total debt service: ₹${Math.round(maxTotalDebtService).toLocaleString('en-IN')}`,
     `Existing obligations: ₹${Math.round(totalExistingDebt).toLocaleString('en-IN')}`,
     `Available new EMI: ₹${Math.round(availableNewEMI).toLocaleString('en-IN')}`,
+    `Product judgement — not an RBI-mandated haircut.`,
   ];
 
   if (ltvSupportedAmount !== null) {
@@ -151,6 +184,18 @@ export function computeLenderCapacity(
     ? 'Your existing obligations already consume the full amount a lender would allocate. No new lending headroom remains.'
     : `A lender would allow up to ${(foir * 100).toFixed(0)}% of your lender-recognized income for all debt payments. After your existing obligations, there is ₹${Math.round(availableNewEMI).toLocaleString('en-IN')}/month available for a new loan — supporting a principal of approximately ₹${Math.round(lenderLikelyAmount / 100000 * 10) / 10}L.`;
 
+  const docBreakdown = {
+    claimedTotalIncome: profile.claimedTotalIncome,
+    documentedIncome: profile.documentedIncome,
+    undocumentedPortion: profile.undocumentedPortion,
+    recognitionRate: calcResult.recognitionRate,
+    recognitionTierLabel: calcResult.recognitionTierLabel,
+    recognitionRange: calcResult.eligibleIncomeRange,
+    recognizedUndocumented: calcResult.recognizedUndocumented,
+    eligibleIncomeLender: profile.eligibleIncomeLender,
+    isProductJudgement: true,
+  };
+
   return {
     foir,
     foirSupportedAmount,
@@ -159,6 +204,9 @@ export function computeLenderCapacity(
     availableNewEMI,
     maxTotalDebtService,
     lenderLikelyAmount,
+    lenderLikelyAmountRange,
+    lenderRecognizedIncomeRange,
+    docBreakdown,
     confidence,
     explanation,
     drivers,

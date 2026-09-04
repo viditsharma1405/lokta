@@ -442,27 +442,29 @@ assert('Answers integration: salaried fixed base retention is 50%', copilotFromA
 assert('Answers integration: salaried fixed safe EMI is ₹30,000 (50% of 60k)', copilotFromAnswers.safeCapacity.safeEMI === 30000);
 assert('Answers integration: salaried fixed recommended EMI is ₹27,000 (90% of 30k)', copilotFromAnswers.safeCapacity.recommendedEMI === 27000);
 
-// ── Documented vs. Undocumented Income Normalization (Stage 3.5 Bug Fix) ──────
+// ── Documented vs. Undocumented Income Normalization (Evidence & Uncertainty Model) ──
 // 1. Fully documented self-employed: ₹90K claimed, ₹90K documented → lender income ₹90K
 const fullDoc = computeEligibleIncomeLender(90000, 90000, false, 0);
 assert('Income normalization: fully documented self-employed undocumented portion is ₹0', fullDoc.undocumentedPortion === 0);
 assert('Income normalization: fully documented self-employed lender income is ₹90,000 (no haircut)', fullDoc.eligibleIncomeLender === 90000);
 
-// 2. Partially documented self-employed: ₹90K claimed, ₹60K documented → lender income ₹63K unsecured
-const partialDoc = computeEligibleIncomeLender(60000, 90000, false, 0);
+// 2. Partially documented self-employed: ₹90K claimed, ₹60K documented → lender income ₹75K (60k + 50% of 30k)
+const partialDoc = computeEligibleIncomeLender(60000, 90000, false, 0, { documentationStatus: 'partial', incomeStability: 'stable' });
 assert('Income normalization: partially documented undocumented portion is ₹30,000', partialDoc.undocumentedPortion === 30000);
-assert('Income normalization: partially documented lender income is ₹63,000 (60k + 10% of 30k)', partialDoc.eligibleIncomeLender === 63000);
+assert('Income normalization: partially documented lender income is ₹75,000 (60k + 50% of 30k)', partialDoc.eligibleIncomeLender === 75000);
 
-// 3. Fully undocumented: claimed ₹30K, documented ₹0 → must NOT use blanket 10% (not ₹3,000)
-const undoc30k = computeEligibleIncomeLender(0, 30000, false, 0);
-assert('Income normalization: fully undocumented claimed ₹30k does NOT produce blanket ₹3k (produces ₹10,500 baseline surrogate)', undoc30k.eligibleIncomeLender === 10500 && undoc30k.eligibleIncomeLender !== 3000);
+// 3. Fully undocumented: claimed ₹30K, documented ₹0 → must NOT use blanket 10% (not ₹3,000) and no ₹25k cap
+const undoc30k = computeEligibleIncomeLender(0, 30000, false, 0, { documentationStatus: 'none', incomeStability: 'unstable' });
+assert('Income normalization: fully undocumented claimed ₹30k does NOT produce blanket ₹3k (produces ₹7,500 weak tier)', undoc30k.eligibleIncomeLender === 7500 && undoc30k.eligibleIncomeLender !== 3000);
 
-// 4. Fully undocumented secured: ₹70K claimed, ₹0 documented → lender income ₹28K secured (40% of 70k)
-const undocSecured = computeEligibleIncomeLender(0, 70000, true, 0);
-assert('Income normalization: fully undocumented secured lender income is ₹28,000 (40% of 70k)', undocSecured.eligibleIncomeLender === 28000);
+// 4. Completely undocumented ₹3L/month (e.g. established business): recognizes conservative tier, NOT capped at ₹25k
+const undoc3L = computeEligibleIncomeLender(0, 300000, false, 0, { documentationStatus: 'none', incomeStability: 'stable', businessTenure: 5 });
+assert('Income normalization: ₹3L claimed undocumented is NOT capped at ₹25,000', undoc3L.eligibleIncomeLender > 25000);
+assert('Income normalization: ₹3L claimed with stable business recognizes 50% tier (₹1,50,000)', undoc3L.eligibleIncomeLender === 150000);
+assert('Income normalization: ₹3L claimed provides uncertainty range', undoc3L.eligibleIncomeRange !== undefined && undoc3L.eligibleIncomeRange.low === 120000 && undoc3L.eligibleIncomeRange.high === 180000);
 
 // 5. ₹9 Lakh undocumented edge case: claimed ₹9,00,000, documented ₹0
-// System must NOT blindly conclude ₹90,000; must cap at ₹25,000 informal ceiling with LOW confidence
+// System must NOT blindly conclude ₹90,000 (blanket 10%) and must NOT cap at ₹25,000
 const answers9L = {
   monthly_income: 900000,
   income_type: 'informal',
@@ -479,21 +481,51 @@ const result9L = runCopilot(profile9L);
 assert('9L Edge Case: claimedTotalIncome is ₹9,00,000', profile9L.claimedTotalIncome === 900000);
 assert('9L Edge Case: documentedIncome is ₹0', profile9L.documentedIncome === 0);
 assert('9L Edge Case: undocumentedPortion is ₹9,00,000', profile9L.undocumentedPortion === 900000);
-assert('9L Edge Case: lender-recognized income is capped at ₹25,000 (NOT ₹90,000 blind multiplier)', profile9L.eligibleIncomeLender === 25000 && profile9L.eligibleIncomeLender !== 90000);
+assert('9L Edge Case: lender-recognized income is NOT capped at ₹25,000', profile9L.eligibleIncomeLender > 25000);
+assert('9L Edge Case: lender-recognized income is NOT blind 10% multiplier (₹90,000)', profile9L.eligibleIncomeLender !== 90000);
 assert('9L Edge Case: lender capacity confidence is strictly LOW', result9L.lenderCapacity.confidence === 'LOW');
-assert('9L Edge Case: driver contains conservative cap explanation', result9L.lenderCapacity.drivers.some(d => d.includes('capped at ₹25,000/month')));
+assert('9L Edge Case: driver contains product judgement note', result9L.lenderCapacity.drivers.some(d => d.includes('Product judgement — not an RBI-mandated haircut.')));
 
 // 6. Anita regression under new undocumented model
 const anitaEdgeProfile = PERSONA_ANITA;
 const anitaEdgeResult = runCopilot(anitaEdgeProfile);
 assert('Anita regression: claimed income is ₹26,000', anitaEdgeProfile.claimedTotalIncome === 26000);
-assert('Anita regression: lender-recognized income is ₹9,100 (NOT ₹2,600)', anitaEdgeProfile.eligibleIncomeLender === 9100 && anitaEdgeProfile.eligibleIncomeLender !== 2600);
+assert('Anita regression: lender-recognized income is ₹6,500 (NOT blanket ₹2,600)', anitaEdgeProfile.eligibleIncomeLender === 6500 && anitaEdgeProfile.eligibleIncomeLender !== 2600);
 assert('Anita regression: high-cost debt payment remains ₹8,750', anitaEdgeProfile.highCostDebtEMI === 8750);
 assert('Anita regression: high-cost debt burden is 33.65% (>30% threshold)', anitaEdgeProfile.highCostDebtEMI / anitaEdgeProfile.eligibleIncomeSafe > 0.30);
 assert('Anita regression: decision verdict remains strictly DONT_BORROW', anitaEdgeResult.decision.verdict === 'DONT_BORROW');
 assert('Anita regression: severe hard stop remains triggered', anitaEdgeResult.decision.hardStopsTriggered.some(s => s.includes('SEVERE')));
 
-// 7. Row 16 complete scenario test via buildProfileFromAnswers and runCopilot
+// 7. Unknown documentation ("I don't know") -> widens uncertainty range & sets confidence LOW
+const answersUnknownDoc = {
+  monthly_income: 60000,
+  income_type: 'informal',
+  documentation_status: 'unknown',
+  requested_amount: 300000,
+  loan_purpose: 'personal_event',
+  existing_emi: 0,
+  essential_expenses: 25000,
+  high_cost_debt: 'none',
+  recent_bounce: 'no',
+};
+const profileUnknownDoc = buildProfileFromAnswers(answersUnknownDoc);
+const resultUnknownDoc = runCopilot(profileUnknownDoc);
+assert('Unknown documentation: documentedIncome is null (not 0)', profileUnknownDoc.documentedIncome === null);
+assert('Unknown documentation: undocumentedPortion is null', profileUnknownDoc.undocumentedPortion === null);
+assert('Unknown documentation: confidence is strictly LOW', resultUnknownDoc.lenderCapacity.confidence === 'LOW');
+assert('Unknown documentation: provides lender likely amount range', resultUnknownDoc.lenderCapacity.lenderLikelyAmountRange !== undefined);
+
+// 8. Documentation improves -> narrows range and increases lender-recognized income deterministically
+const answersImprovedDoc = {
+  ...answersUnknownDoc,
+  documentation_status: 'partial',
+  documented_monthly_income: 40000,
+};
+const profileImprovedDoc = buildProfileFromAnswers(answersImprovedDoc);
+assert('Documentation improves: documented income is recognized at ₹40,000', profileImprovedDoc.documentedIncome === 40000);
+assert('Documentation improves: lender-recognized income is higher than unknown base', profileImprovedDoc.eligibleIncomeLender > profileUnknownDoc.eligibleIncomeLender);
+
+// 9. Row 16 complete scenario test via buildProfileFromAnswers and runCopilot
 const answersRow16 = {
   monthly_income: 90000,
   income_type: 'self_employed',
@@ -526,7 +558,7 @@ assert('Row 16: baseRetentionFactor is 40% (SE documented steady)', resultRow16.
 assert('Row 16: safeEMI is ₹10,600 (40% of ₹26,500)', resultRow16.safeCapacity.safeEMI === 10600);
 assert('Row 16: lender likely amount is positive and computed via fair-rate midpoint', resultRow16.lenderCapacity.lenderLikelyAmount > 0);
 
-// Partially documented via buildProfileFromAnswers
+// Partially documented via buildProfileFromAnswers: ₹90k claimed, ₹60k documented -> ₹75k (60k + 50% of 30k)
 const answersPartial16 = {
   ...answersRow16,
   documentation_status: 'partial',
@@ -535,19 +567,9 @@ const answersPartial16 = {
 const profilePartial16 = buildProfileFromAnswers(answersPartial16);
 assert('Partially documented via answers: documentedIncome is ₹60,000', profilePartial16.documentedIncome === 60000);
 assert('Partially documented via answers: undocumentedPortion is ₹30,000', profilePartial16.undocumentedPortion === 30000);
-assert('Partially documented via answers: eligibleIncomeLender is ₹63,000 (60k + 10% of 30k)', profilePartial16.eligibleIncomeLender === 63000);
+assert('Partially documented via answers: eligibleIncomeLender is ₹75,000 (60k + 50% of 30k)', profilePartial16.eligibleIncomeLender === 75000);
 
-// Partially documented via annual ITR question
-const answersPartialITR = {
-  ...answersRow16,
-  documentation_status: 'partial',
-  documented_income_itr: 720000, // 7.2L/yr = 60k/mo
-};
-const profilePartialITR = buildProfileFromAnswers(answersPartialITR);
-assert('Partially documented via annual ITR: documentedIncome is ₹60,000', profilePartialITR.documentedIncome === 60000);
-assert('Partially documented via annual ITR: eligibleIncomeLender is ₹63,000', profilePartialITR.eligibleIncomeLender === 63000);
-
-// 8. Verify that changing documentation status does NOT alter borrower-safe income calculation
+// 10. Verify that changing documentation status does NOT alter borrower-safe income calculation
 const answersUndoc16 = {
   ...answersRow16,
   documentation_status: 'none',
@@ -556,7 +578,7 @@ const profileUndoc16 = buildProfileFromAnswers(answersUndoc16);
 assert('Safe capacity preservation: full doc safe income is ₹90,000', profileRow16.eligibleIncomeSafe === 90000);
 assert('Safe capacity preservation: undocumented safe income remains ₹90,000', profileUndoc16.eligibleIncomeSafe === 90000);
 assert('Safe capacity preservation: safe income is unaffected by documentation haircut', profileRow16.eligibleIncomeSafe === profileUndoc16.eligibleIncomeSafe);
-assert('Lender income differs between full doc (₹90k) and undocumented (capped at ₹25k)', profileRow16.eligibleIncomeLender === 90000 && profileUndoc16.eligibleIncomeLender === 25000);
+assert('Lender income reflects documentation difference without arbitrary caps', profileRow16.eligibleIncomeLender === 90000 && profileUndoc16.eligibleIncomeLender === 45000);
 
 // ── Summary ──────────────────────────────────────────────────────────────────
 console.log('\n═══════════════════════════════════════════════════════════════');

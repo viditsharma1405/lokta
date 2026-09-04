@@ -20,41 +20,62 @@
 
 ### Lender-Recognized Income (Documentation-Based, Uncertainty-Aware Model)
 
-> **Important**: The documentation treatment is a product judgement for this borrower-side assessment, not an RBI-mandated haircut. RBI does not mandate a blanket 10% undocumented income rule.
+> **Important**: These recognition factors are product judgements for a borrower-side self-assessment. They are not RBI-mandated lender income haircuts. RBI does not mandate an undocumented income haircut or cap.
 
-Instead of a blanket linear percentage on claimed income, the engine uses an uncertainty-aware model based on factual documentation evidence:
+Instead of an arbitrary income cap (such as ₹25,000/month) or a blanket 10% multiplier on claimed earnings, the engine evaluates lender-side capacity based on verifiable evidence, income stability, business/employment tenure, and documentation status:
 
-1. **Fully Documented Income (`undocumentedPortion = 0`)**:
-   - **What**: 100% of documented income is recognized (`lenderRecognizedIncome = documentedIncome + coApplicantIncome`).
-   - **Value**: Full recognition (0% haircut).
-   - **Why**: The borrower has provided complete proof (ITR / salary slips / bank statements) matching or exceeding claimed cash flow.
-   - **Source**: Product judgement / lending fact.
+```
+lenderRecognizedIncome = documentedIncome + (undocumentedPortion × recognitionFactor) + coApplicantIncome
+```
+where `undocumentedPortion = max(0, claimedTotalIncome - documentedIncome)`.
 
-2. **Partially Documented Income (`documentedIncome > 0 && undocumentedPortion > 0`)**:
-   - **What**: Documented base is recognized at 100%; only the unverified surplus portion (`undocumentedPortion = claimedTotalIncome - documentedIncome`) receives conservative treatment.
-   - **Value**:
-     - Unsecured: 10% of undocumented surplus (capped at ₹25,000/mo).
-     - Secured (backed by collateral, e.g. LAP): 40% of undocumented surplus.
-   - **Why**: The documented core establishes verified creditworthiness; unverified cash surplus is discounted conservatively.
+#### Recognition Tiers for the Undocumented Portion:
+
+1. **Fully Documented (`undocumentedPortion = 0`)**:
+   - **What**: 100% recognition of documented income (`0%` haircut).
+   - **Value**: Full recognition (`rate = 1.0`).
+   - **Why**: The borrower has provided formal documents (ITR, salary slips, audited records) matching or exceeding claimed cash flow.
+   - **Source**: Product judgement / lending standard.
+   - **Impact**: Maximum lender capacity; HIGH confidence.
+
+2. **Tier 1 — Strong Corroboration / Highly Stable**:
+   - **What**: 75% recognition on the undocumented surplus (`range: 60%–80%`).
+   - **Value**: `rate = 0.75`.
+   - **Why**: Secondary evidence (bank statements, GST/invoices, or established business tenure ≥3 years with steady earnings) corroborates that unrecorded cash flows are real, persistent, and recurrent.
    - **Source**: Product judgement.
+   - **Impact**: High recognition on surplus cash flow; MEDIUM/HIGH confidence.
 
-3. **Completely Undocumented Income (`documentedIncome = 0`)**:
-   - **What**: Does NOT use a blanket 10% multiplication on claimed income. Instead, uses a conservative base surrogate with an informal benchmark ceiling, and flags lender capacity confidence as `LOW`.
-   - **Value**:
-     - Unsecured: 35% baseline surrogate (aligned with informal FOIR 35%), strictly capped at ₹25,000/month (aligned with the RBI microfinance household threshold of ₹3,00,000/year).
-     - Secured: 40% baseline surrogate, capped at ₹60,000/month.
-   - **Why**: For typical informal earnings (e.g. ₹20k–₹35k), informal/MFI lenders evaluate realistic cash flow surrogates rather than driving income to poverty-line levels (e.g. ₹2,600 or ₹3,000). For high claimed cash incomes (e.g. ₹9,00,000/month), unverified cash cannot scale without formal tax/bank documents.
+3. **Tier 2 — Moderate Corroboration / Established Stable Income**:
+   - **What**: 50% recognition on the undocumented surplus (`range: 40%–60%`).
+   - **Value**: `rate = 0.50`.
+   - **Why**: For established businesses (≥3 years) or steady earners with partial records, lenders conservatively recognize about half of unrecorded cash flow. Backed loans (secured LAP or gold) also fall here.
    - **Source**: Product judgement.
+   - **Impact**: Balanced recognition for informal established businesses (e.g. ₹90k claimed, ₹60k documented → ₹75k lender income; or ₹3L claimed, ₹0 documented → ₹1.5L estimate); MEDIUM confidence.
 
-| Documentation Status | Loan Type | Recognition Formula | Ceiling Cap | Confidence | Source |
-|----------------------|-----------|---------------------|-------------|------------|--------|
-| Fully Documented | Any | `100% × documentedIncome` | None | HIGH | Product judgement |
-| Partially Documented | Unsecured | `documentedIncome + 10% × undocumentedPortion` | ₹25,000 on surplus | MEDIUM | Product judgement |
-| Partially Documented | Secured | `documentedIncome + 40% × undocumentedPortion` | ₹25,000 on surplus | MEDIUM / HIGH | Product judgement |
-| Completely Undocumented | Unsecured | `min(₹25,000, 35% × claimedTotalIncome)` | ₹25,000/mo | LOW | Product judgement |
-| Completely Undocumented | Secured | `min(₹60,000, 40% × claimedTotalIncome)` | ₹60,000/mo | LOW / MEDIUM | Product judgement |
+4. **Tier 3 — Weak Corroboration / Volatile Income**:
+   - **What**: 25% recognition on the undocumented portion (`range: 15%–35%`).
+   - **Value**: `rate = 0.25`.
+   - **Why**: For irregular gig or informal workers with variable earnings and no records (e.g. Anita), lenders heavily discount claimed cash flow acknowledging down months may impair repayment.
+   - **Source**: Product judgement.
+   - **Impact**: Conservative estimate (e.g. Anita's ₹26k claimed → ₹6,500; ₹3L claimed → ₹75,000); LOW confidence.
 
-**Impact**: Lender-recognized income determines FOIR-based capacity (`maxTotalDebtService = lenderRecognizedIncome × FOIR`).
+5. **Tier 4 — Completely Unsupported & Highly Uncertain / Unknown Documentation**:
+   - **What**: 15% baseline recognition with wide uncertainty band (`range: 0%–25%`).
+   - **Value**: `rate = 0.15` (range: 0% to 25%).
+   - **Why**: "Confidence widens with silence." When the borrower doesn't know their documentation or evidence is entirely missing, the model widens uncertainty rather than manufacturing false precision.
+   - **Source**: Product judgement.
+   - **Impact**: Widest lender capacity band; strictly LOW confidence; prompt clearly explains that documentation is missing.
+
+| Documentation Status | Corroborating Evidence / Stability | Tier | Recognition Rate | Range | Confidence | Source |
+|----------------------|------------------------------------|------|------------------|-------|------------|--------|
+| Fully Documented | Formal ITR / Salary Slips | Full | 100% on total | None | HIGH | Product judgement |
+| Partially Documented | Partial records + stable / tenure ≥3yr | Strong | 75% on surplus | 60%–80% | HIGH | Product judgement |
+| Partially Documented | Established business / steady income | Moderate | 50% on surplus | 40%–60% | MEDIUM | Product judgement |
+| Undocumented (e.g. ₹3L, ₹9L) | Established business / steady | Moderate | 50% on claimed | 40%–60% | MEDIUM/LOW | Product judgement |
+| Undocumented (e.g. Anita, gig) | Volatile / irregular / no records | Weak | 25% on claimed | 15%–35% | LOW | Product judgement |
+| Unknown ("I don't know") | Unknown / uncorroborated | Uncertain | 15% on claimed | 0%–25% | LOW | Product judgement |
+
+**Impact**: Lender-recognized income determines FOIR-based capacity (`maxTotalDebtService = lenderRecognizedIncome × FOIR`). Neither a blanket 10% nor an arbitrary ₹25,000 ceiling is applied.
 
 ### Eligible Income — Safe (Borrower)
 
@@ -394,3 +415,4 @@ netWealthDifference = wealthGain + totalInterestPaid
 6. **No lender-specific pricing**: Rate bands are market-level, not institution-specific.
 7. **Productive return**: Excluded from calculations by design (see Section 12).
 8. **Investment returns**: Market returns are non-guaranteed estimates and subject to volatility.
+9. **Lender recognition model**: The lender-recognition model is an illustrative borrower-side heuristic, not a lender underwriting policy. Product judgements are applied conservatively on unevidenced portions.

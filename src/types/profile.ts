@@ -55,10 +55,10 @@ export interface BorrowerProfile {
   requestedTenureMonths?: number;  // if borrower specifies; otherwise product default used
 
   // Income (Section 3 frozen rules)
-  documentedIncome: number;          // ITR / salary / verified bank statement
+  documentedIncome: number | null;          // ITR / salary / verified bank statement (null = genuinely unknown)
   claimedTotalIncome: number;        // what borrower reports (mid-point for SE≥3yr, lower for gig)
-  undocumentedPortion: number;       // MAX(0, claimed - documented)
-  eligibleIncomeLender: number;      // documented + haircut * undocumented
+  undocumentedPortion: number | null;       // MAX(0, claimed - documented) (null = unknown)
+  eligibleIncomeLender: number;      // documented + recognition factor * undocumented
   eligibleIncomeSafe: number;        // claimedTotalIncome (no haircut)
 
   // Debt

@@ -274,12 +274,14 @@ export default function Questionnaire({ onComplete }: QuestionnaireProps) {
     MUST_QUESTIONS[7], // recent_bounce
   ], []);
 
-  // Step 3 (Optional): Sharpening rate position and safety margin (3 questions + adaptive ITR)
+  // Step 3 (Optional): Sharpening rate position and safety margin (3 questions + adaptive documentation)
   const step3Questions = useMemo(() => {
     const qCredit = SALARIED_QUESTIONS.find(q => q.id === 'credit_score');
     const qSavings = CROSS_CUTTING_QUESTIONS.find(q => q.id === 'emergency_savings');
     const qDocs = answers.income_type === 'self_employed'
       ? (SELF_EMPLOYED_QUESTIONS.find(q => q.id === 'documentation_status') ?? SALARIED_QUESTIONS.find(q => q.id === 'documentation_status'))
+      : answers.income_type === 'informal'
+      ? INFORMAL_QUESTIONS.find(q => q.id === 'documentation_status')
       : SALARIED_QUESTIONS.find(q => q.id === 'documentation_status');
     const list: QuestionDef[] = [qCredit, qSavings, qDocs].filter((q): q is QuestionDef => Boolean(q));
 

@@ -79,8 +79,13 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
     claimedTotalIncome = explicitDocIncome;
   }
 
-  let documentedIncome: number;
-  if (explicitDocIncome !== null) {
+  let documentedIncome: number | null = null;
+  const isDocUnknown = docRaw === 'unknown' || answers.documented_income === 'unknown' || answers.documented_monthly_income === 'unknown' || answers.documented_income_itr === 'unknown';
+
+  if (isDocUnknown) {
+    documentationStatus = 'unknown';
+    documentedIncome = null;
+  } else if (explicitDocIncome !== null) {
     documentedIncome = explicitDocIncome;
     if (documentationStatus === 'unknown') {
       documentationStatus = documentedIncome >= claimedTotalIncome ? 'full' : (documentedIncome > 0 ? 'partial' : 'none');
@@ -97,11 +102,11 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
     documentedIncome = 0;
   } else {
     // documentationStatus === 'partial' (without explicit number) or 'unknown'
-    documentedIncome = 0;
+    documentedIncome = documentationStatus === 'unknown' ? null : 0;
   }
 
   // Claimed income should not be less than verified documented income
-  if (documentedIncome > claimedTotalIncome) {
+  if (documentedIncome !== null && documentedIncome > claimedTotalIncome) {
     claimedTotalIncome = documentedIncome;
   }
 
@@ -126,8 +131,30 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
   else if (collateralType === 'gold') loanTypeForSecured = 'gold_loan';
   const secured = isSecuredProduct(loanTypeForSecured);
 
+  const stabilityStr = str(answers.income_stability) || str(answers.income_stability_biz) || str(answers.income_stability_informal);
+  let incomeStability: IncomeStability = 'unknown';
+  if (stabilityStr === 'stable') incomeStability = 'stable';
+  else if (stabilityStr === 'moderate') incomeStability = 'moderate';
+  else if (stabilityStr === 'unstable') incomeStability = 'unstable';
+  else if (incomeType === 'salaried' && (!answers.variable_income_share || num(answers.variable_income_share) === 0)) {
+    // Standard salaried income with no variable component is stable fixed salary
+    incomeStability = 'stable';
+  }
+
   const { undocumentedPortion, eligibleIncomeLender } =
-    computeEligibleIncomeLender(documentedIncome, claimedTotalIncome, secured, coApplicantIncome);
+    computeEligibleIncomeLender(
+      documentedIncome,
+      claimedTotalIncome,
+      secured,
+      coApplicantIncome,
+      {
+        documentationStatus,
+        incomeStability,
+        businessTenure,
+        isSecured: secured,
+        hasRecords: documentationStatus === 'partial',
+      }
+    );
   const eligibleIncomeSafe = computeEligibleIncomeSafe(claimedTotalIncome, coApplicantIncome);
 
   // Existing EMI
@@ -175,16 +202,7 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
 
   const recentBounce = str(answers.recent_bounce) === 'yes' || repaymentHistory === 'bounce';
 
-  // Stability
-  const stabilityRaw = str(answers.income_stability) || str(answers.income_stability_biz) || str(answers.income_stability_informal);
-  let incomeStability: IncomeStability = 'unknown';
-  if (stabilityRaw === 'stable') incomeStability = 'stable';
-  else if (stabilityRaw === 'moderate') incomeStability = 'moderate';
-  else if (stabilityRaw === 'unstable') incomeStability = 'unstable';
-  else if (incomeType === 'salaried' && (!answers.variable_income_share || num(answers.variable_income_share) === 0)) {
-    // Standard salaried income with no variable component is stable fixed salary
-    incomeStability = 'stable';
-  }
+  // Stability was resolved during income normalization above
 
   // Documentation status was resolved during income normalization above
 
