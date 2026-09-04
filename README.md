@@ -2,6 +2,9 @@
 
 > A borrower-side self-assessment tool that turns lending judgement into rules a borrower can see.
 
+**🌐 Live Demo:** [https://viditsharma1405.github.io/lokta/](https://viditsharma1405.github.io/lokta/)  
+**📦 GitHub Repository:** [https://github.com/viditsharma1405/lokta](https://github.com/viditsharma1405/lokta)
+
 ## What This Is
 
 A pure client-side financial assessment tool that answers five questions for any prospective borrower:
