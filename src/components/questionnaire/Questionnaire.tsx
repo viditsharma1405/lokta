@@ -318,7 +318,7 @@ export default function Questionnaire({ onComplete }: QuestionnaireProps) {
         <p className="text-xs sm:text-sm text-[#71717a] mt-1">
           {step === 1 && 'Tell us what you earn and what you are looking to borrow.'}
           {step === 2 && 'Check your existing obligations to see your safe room.'}
-          {step === 3 && 'Optional: Add credit score and savings buffer to narrow your rate band.'}
+          {step === 3 && 'Confidence widens with silence: Fewer answers mean a wider, more conservative rate band. Skip anytime or answer to sharpen.'}
         </p>
 
         {/* Progress Bar */}
@@ -342,6 +342,20 @@ export default function Questionnaire({ onComplete }: QuestionnaireProps) {
             <span className="sm:hidden">3. Fine-Tune</span>
           </span>
         </div>
+
+        {/* Rule 1: Adaptive Flow Indicator */}
+        {answers.income_type && (
+          <div className="mt-3 inline-flex items-center gap-1.5 bg-[#faf4f8] text-[#5a2045] text-[11px] font-medium px-3 py-1 rounded-full border border-[#e8d0e0]">
+            <span>⚡ Adaptive stream:</span>
+            <span>
+              {answers.income_type === 'salaried'
+                ? 'Salaried flow active — business tenure & ITR questions skipped.'
+                : answers.income_type === 'self_employed'
+                ? 'Business owner flow active — corporate employment questions skipped.'
+                : 'Informal/gig flow active — formal corporate documentation skipped.'}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Step 1 Questions */}

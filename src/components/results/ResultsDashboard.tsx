@@ -601,10 +601,18 @@ export default function ResultsDashboard({ profile, output: _output, personaName
             </div>
           </div>
 
+          {/* Rule 4: Why Two Amounts Differ */}
+          <div className="bg-[#faf7f2] rounded-xl p-3 border border-[#eae3d9] text-xs text-[#52525b] flex items-start gap-2">
+            <span className="text-[#5a2045] font-bold shrink-0">Why two amounts:</span>
+            <span>
+              Lender-Likely (<strong>{formatLakhs(lenderCapacity.lenderLikelyAmount)}</strong>) reflects the lender's gross FOIR formula ignoring your family living costs. Borrower-Safe (<strong>{formatLakhs(safeCapacity.recommendedAmount)}</strong>) is strictly based on your verified cash surplus after essentials.
+            </span>
+          </div>
+
           {/* EMI Ceiling */}
           <div className="bg-white rounded-xl border border-[#eae3d9] p-4 sm:p-5 shadow-xs">
             <h3 className="text-sm font-bold text-[#18181b] mb-3 sm:mb-4">EMI Ceiling</h3>
-            <div className="grid grid-cols-3 gap-1.5 sm:gap-4 mb-4 sm:mb-5">
+            <div className="grid grid-cols-3 gap-1.5 sm:gap-4 mb-3 sm:mb-4">
               <div className="p-2 sm:p-0 bg-[#faf7f2] sm:bg-transparent rounded-lg sm:rounded-none">
                 <p className="text-[10px] sm:text-xs text-[#71717a] font-medium">Safe Ceiling</p>
                 <p className="text-sm sm:text-xl font-extrabold text-[#18181b] mt-0.5">{formatEMI(safeCapacity.safeEMI)}</p>
@@ -620,6 +628,14 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                 <p className="text-sm sm:text-xl font-extrabold text-[#5a2045] mt-0.5">{formatEMI(lenderCapacity.availableNewEMI)}</p>
                 <p className="text-[10px] sm:text-xs text-[#71717a] leading-tight mt-0.5">FOIR capacity</p>
               </div>
+            </div>
+
+            {/* Rule 4: Every Number Has a Why — One-sentence explanation */}
+            <div className="bg-[#faf7f2] rounded-xl p-3 sm:p-3.5 border border-[#eae3d9] mb-4 text-xs leading-relaxed">
+              <p className="text-[#3f3f46]">
+                <strong className="text-[#18181b]">Why your safe ceiling is {formatEMI(safeCapacity.safeEMI)}/mo and not higher:</strong>{' '}
+                It reserves exactly {(safeCapacity.adjustedRetentionFactor * 100).toFixed(0)}% of your {formatCurrency(safeCapacity.disposableCashFlow, true)} disposable monthly surplus (after essentials &amp; existing debt) so you never risk default.
+              </p>
             </div>
 
             {/* Tenure table */}
@@ -685,6 +701,23 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                 ))}
                 <p>Final: {fairRate.finalPosition.toFixed(0)}/100 ± {fairRate.halfWidth}</p>
               </Expandable>
+
+              {/* Rule 2 & 3: Consequence of Unknowns & Widening with Silence */}
+              {fairRate.unknownCount > 0 && (
+                <div className="mt-3 bg-[#fffbeb] border border-[#fde68a] rounded-lg p-2.5 text-xs text-[#92400e]">
+                  <p className="font-semibold flex items-center gap-1 text-[11px]">
+                    <span>ℹ️</span> Confidence widens with silence
+                  </p>
+                  <p className="mt-0.5 text-[11px] leading-relaxed">
+                    With {fairRate.unknownCount} factor{fairRate.unknownCount > 1 ? 's' : ''} unknown, your rate band is widened by ±{(fairRate.unknownCount * 1.5).toFixed(1)}% to reflect real uncertainty rather than false precision.
+                  </p>
+                  {profile.creditScoreStatus === 'unknown' && (
+                    <p className="mt-1 text-[11px] leading-relaxed text-[#78350f]">
+                      • <strong>Credit score unknown:</strong> Not penalized as 300; benchmarked against NBFC tier ({fairRate.baseBandLow}%–{fairRate.baseBandHigh}%) with widened band. A confirmed score ≥700 could unlock bank-tier rates.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="bg-white rounded-xl border border-[#eae3d9] p-4 shadow-xs">
@@ -900,6 +933,40 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                 {productRoute.tradeoffs.map((t, i) => <p key={i} className="text-xs text-[#71717a]">• {t}</p>)}
               </div>
             )}
+          </div>
+
+          {/* Rule 5: What We Know vs. What We Assumed */}
+          <div className="bg-white rounded-xl border border-[#eae3d9] p-4 sm:p-5 shadow-xs text-xs">
+            <h3 className="text-sm font-bold text-[#18181b] mb-1 flex items-center gap-1.5">
+              <span>📋</span> What We Know vs. What We Assumed
+            </h3>
+            <p className="text-[#71717a] text-xs mb-3">
+              We base our calculations on your verified answers and explicitly document every financial assumption.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[#52525b]">
+              <div className="bg-[#faf7f2] p-3 rounded-lg border border-[#eae3d9]">
+                <p className="font-bold text-[#18181b] mb-1.5 flex items-center gap-1">
+                  <span>✓</span> Confirmed Facts (From You):
+                </p>
+                <ul className="space-y-1 text-[11px]">
+                  <li>• <strong>Income:</strong> {formatCurrency(profile.claimedTotalIncome, true)}/mo ({profile.incomeType === 'salaried' ? 'Salaried' : profile.incomeType === 'self_employed' ? 'Self-Employed' : 'Informal / Gig'})</li>
+                  <li>• <strong>Requested Loan:</strong> {formatLakhs(profile.requestedAmount)} for {profile.loanPurpose.replace(/_/g, ' ')}</li>
+                  <li>• <strong>Existing Debt:</strong> {formatCurrency(profile.existingEMI, true)}/mo declared EMIs</li>
+                  <li>• <strong>Repayment Track:</strong> {profile.repaymentHistory === 'clean' ? 'Clean repayment history' : profile.recentBounce ? 'Recent bounce noted' : 'Unspecified'}</li>
+                </ul>
+              </div>
+              <div className="bg-[#faf7f2] p-3 rounded-lg border border-[#eae3d9]">
+                <p className="font-bold text-[#18181b] mb-1.5 flex items-center gap-1">
+                  <span>ℹ️</span> Documented Assumptions:
+                </p>
+                <ul className="space-y-1 text-[11px]">
+                  <li>• <strong>Living Essentials:</strong> {profile.essentialExpensesIsDefaulted ? `Assumed at ${profile.incomeType === 'salaried' ? '50%' : '65%'} standard living benchmark` : `${formatCurrency(profile.essentialExpenses, true)}/mo (reported)`}</li>
+                  <li>• <strong>Fair Rate Ceiling:</strong> {fairRate.fairRateHigh.toFixed(1)}% p.a. used as conservative barrier for sizing safe principal</li>
+                  <li>• <strong>All-in Fees:</strong> ~{effectiveCost.processingFeePct}% processing fee amortized in effective annualized cost</li>
+                  <li>• <strong>High-Cost Debt:</strong> {profile.highCostDebtEMIIsDefaulted ? 'Monthly payment assumed at 25% of outstanding balance' : 'None / Confirmed'}</li>
+                </ul>
+              </div>
+            </div>
           </div>
 
           {/* CTA */}
