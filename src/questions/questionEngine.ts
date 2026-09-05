@@ -111,7 +111,52 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
     answers.documented_monthly_income === 'unknown' ||
     answers.documented_income_itr === 'unknown';
 
-  if (isDocUnknown) {
+  const seDocType = str(answers.se_doc_type);
+  if (seDocType === 'none') {
+    documentationStatus = 'none';
+    documentedIncome = 0;
+  } else if (seDocType === 'itr') {
+    if (itrAnnual !== null && itrAnnual > 0) {
+      documentedIncome = itrAnnual / 12;
+      documentationStatus = documentedIncome >= claimedTotalIncome ? 'full' : 'partial';
+    } else if (answers.documented_income_itr === 'unknown') {
+      documentationStatus = 'unknown';
+      documentedIncome = null;
+    } else {
+      documentedIncome = 0;
+      documentationStatus = 'none';
+    }
+  } else if (seDocType === 'records') {
+    if (explicitDocIncome !== null && explicitDocIncome > 0) {
+      documentedIncome = explicitDocIncome;
+      documentationStatus = documentedIncome >= claimedTotalIncome ? 'full' : 'partial';
+    } else if (answers.documented_monthly_income === 'unknown' || answers.documented_income === 'unknown') {
+      documentationStatus = 'unknown';
+      documentedIncome = null;
+    } else {
+      documentedIncome = 0;
+      documentationStatus = 'none';
+    }
+  } else if (seDocType === 'both') {
+    const monthlyFromItr = itrAnnual !== null && itrAnnual > 0 ? itrAnnual / 12 : null;
+    if (explicitDocIncome !== null && monthlyFromItr !== null) {
+      // Conservative: min of both
+      documentedIncome = Math.min(explicitDocIncome, monthlyFromItr);
+      documentationStatus = documentedIncome >= claimedTotalIncome ? 'full' : 'partial';
+    } else if (explicitDocIncome !== null) {
+      documentedIncome = explicitDocIncome;
+      documentationStatus = documentedIncome >= claimedTotalIncome ? 'full' : 'partial';
+    } else if (monthlyFromItr !== null) {
+      documentedIncome = monthlyFromItr;
+      documentationStatus = documentedIncome >= claimedTotalIncome ? 'full' : 'partial';
+    } else if (isDocUnknown) {
+      documentationStatus = 'unknown';
+      documentedIncome = null;
+    } else {
+      documentedIncome = 0;
+      documentationStatus = 'none';
+    }
+  } else if (isDocUnknown) {
     documentationStatus = 'unknown';
     documentedIncome = null;
   } else if (explicitDocIncome !== null) {
@@ -141,7 +186,10 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
   }
 
   // Collateral
-  const collateralType = (str(answers.collateral_available) as CollateralType) || 'none';
+  let collateralType = (str(answers.collateral_available) as CollateralType) || 'none';
+  if (answers.gold_collateral === 'yes') {
+    collateralType = 'gold';
+  }
   const collateralValue = collateralType !== 'none' ? num(answers.collateral_value) : null;
 
   // Co-applicant: STRICTLY require explicit confirmation (Never assume spouse is co-applicant)
@@ -172,15 +220,9 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
     incomeStability = 'moderate';
   } else if (stabilityStr === 'unstable') {
     incomeStability = 'unstable';
-  } else if (stabilityStr === 'unknown') {
+  } else {
+    // Genuinely unanswered or unknown: strictly unknown
     incomeStability = 'unknown';
-  } else if (
-    incomeType === 'salaried' &&
-    !answers.income_stability &&
-    (!answers.variable_income_share || num(answers.variable_income_share) === 0)
-  ) {
-    // Only assume stable for salaried if question was not asked and variable share is 0
-    incomeStability = 'stable';
   }
 
   const { undocumentedPortion, eligibleIncomeLender } = computeEligibleIncomeLender(

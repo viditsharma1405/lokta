@@ -34,20 +34,20 @@ The tool deliberately optimizes for **borrower safety**, not maximum eligibility
 # Install dependencies
 npm install
 
-# Run development server
-npm run dev
+# Run complete verification test suite (Persona, Edge Case, Hardening — 287 tests)
+npm test
 
-# Run persona tests (Priya, Ravi, Anita)
-npx tsx src/tests/personaTests.ts
+# Lint codebase (oxlint)
+npm run lint
 
-# Run edge-case tests
-npx tsx src/tests/edgeCaseTests.ts
-
-# Production build
+# Production build (TypeScript check + Vite bundle)
 npm run build
+
+# Run development server locally
+npm run dev
 ```
 
-Visit `http://localhost:5173` and either start the questionnaire or load a demo persona.
+Visit `http://localhost:5173` and either start the quick borrower assessment or load a demo persona.
 
 ## Architecture
 
@@ -91,11 +91,14 @@ src/
 
 1. **Engine is pure TypeScript** — no React, no browser APIs, no side effects. Can be tested in Node or Deno.
 2. **Every constant is source-labeled** — "My judgement", "External fact (RBI 2026)", "Assignment-derived".
-3. **Every question has an impact declaration** — which outputs it affects and why.
+3. **Every question has an impact declaration** — which outputs it affects and why (no fake explainability).
 4. **Two amounts, always** — lender-likely (their number) vs. borrower-safe (your number). The safe amount is always the one we recommend.
 5. **Productive return never enters calculations** — stored for display framing only.
 6. **DONT_BORROW shows math anyway** — but clearly labels it as "mathematical capacity, not a recommendation."
-7. **No backend** — everything runs client-side. No data leaves the browser.
+7. **No backend, no auth, no database, no bureau** — everything runs client-side. No data leaves the browser.
+8. **SIP comparison is strictly illustrative** — completely isolated outside the lending engine; 0 effect on verdicts, safe amounts, or rates.
+9. **Tenure simulator uses the exact same engine** — safe EMI ceiling is invariant to tenure changes; safe amount and FOIR capacity recalculate dynamically (and respect LTV bounds).
+10. **Provenance taxonomy** — every material financial metric is stamped as FACT, USER ANSWER, ASSUMPTION, or DERIVED.
 
 ## Demo Personas
 

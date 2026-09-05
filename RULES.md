@@ -30,7 +30,7 @@ All rules, thresholds, and numbers in this specification fall into five distinct
 
 > **Important**: These recognition factors are product judgements for a borrower-side self-assessment. They are not RBI-mandated lender income haircuts. RBI does not mandate an undocumented income haircut or cap.
 
-Instead of an arbitrary income cap (such as ₹25,000/month) or a blanket 10% multiplier on claimed earnings, the engine evaluates lender-side capacity based on verifiable evidence, income stability, business/employment tenure, and documentation status:
+Instead of an arbitrary income cap (such as ₹25,000/month) or a blanket 10% multiplier on claimed earnings, the engine evaluates lender-side capacity based on documented evidence, income stability, business/employment tenure, and documentation status:
 
 ```
 lenderRecognizedIncome = documentedIncome + (undocumentedPortion × recognitionFactor) + coApplicantIncome

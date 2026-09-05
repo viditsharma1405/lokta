@@ -495,7 +495,17 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                 : []),
               { label: 'Credit score', val: profile.creditScore ? String(profile.creditScore) : profile.creditScoreStatus.replace('_', ' ') },
               { label: 'Repayment history', val: personaName === 'Ravi' && profile.repaymentHistory === 'clean' ? 'Clean (Demo Assumption)' : profile.repaymentHistory },
-              ...(profile.coApplicantIncome > 0 ? [{ label: 'Co-applicant', val: `₹${profile.coApplicantIncome.toLocaleString('en-IN')}/mo (Confirmed)` }] : []),
+              ...(profile.coApplicantIncome > 0
+                ? [
+                    {
+                      label: 'Co-applicant',
+                      val:
+                        personaName === 'Ravi'
+                          ? `₹${profile.coApplicantIncome.toLocaleString('en-IN')}/mo (Demo assumption: spouse included as co-applicant)`
+                          : `₹${profile.coApplicantIncome.toLocaleString('en-IN')}/mo (Disclosed by borrower)`,
+                    },
+                  ]
+                : []),
               { label: 'Documentation', val: profile.documentationStatus },
               { label: 'Product', val: productRoute.recommendedRoute },
             ].map(item => (
@@ -535,9 +545,9 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                 setMobileTab('finances');
                 window.scrollTo({ top: 0, behavior: 'smooth' });
               }}
-              className="text-xs font-bold text-[#5a2045] bg-white px-3 py-1.5 rounded-lg border border-[#e8d0e0] shadow-xs cursor-pointer active:bg-[#f4e7f0]"
+              className="text-xs font-bold text-[#5a2045] bg-white border border-[#e8d0e0] px-2.5 py-1 rounded-lg hover:bg-[#f4e7f0] transition-all cursor-pointer"
             >
-              ✏️ Adjust Finances →
+              Adjust Finances ⚙️
             </button>
           </div>
 
@@ -575,7 +585,7 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                 </p>
               )}
               <p className="text-xs text-[#71717a] mt-0.5">
-                Baseline at {defaultTenure}mo default · FOIR: {(lenderCapacity.foir * 100).toFixed(0)}%
+                Baseline at {defaultTenure}mo default · FOIR: {(lenderCapacity.foir * 100).toFixed(0)}% of lender-recognized income
               </p>
               {simulatedTenure !== defaultTenure && (
                 <div className="mt-2 pt-2 border-t border-[#eae3d9] text-xs">
@@ -877,10 +887,10 @@ export default function ResultsDashboard({ profile, output: _output, personaName
             <div className="bg-[#e6f4ec] text-[#064e3b] rounded-xl p-4 flex items-start gap-3 shadow-xs border border-[#a7f3d0]">
               <div className="text-2xl mt-0.5">💡</div>
               <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-[#065f46] mb-0.5">The Opportunity Gap</h4>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[#065f46] mb-0.5">The Opportunity Gap (Illustrative)</h4>
                 <p className="text-xs leading-relaxed text-[#064e3b]">
-                  Investing this EMI builds a <strong>{formatCurrency(sipComparison.futureValue, true)}</strong> nest egg while saving you <strong>{formatCurrency(sipLoanCost.totalInterest, true)}</strong> in loan interest.
-                  That is a total net wealth advantage of <span className="underline font-bold text-[#065f46] text-sm">{formatCurrency(sipComparison.netWealthDifference, true)}</span> in your pocket over {simulatedTenure} months.
+                  Under these assumptions (at {sipReturnPct}% p.a.), investing this EMI builds an estimated <strong>{formatCurrency(sipComparison.futureValue, true)}</strong> portfolio while avoiding <strong>{formatCurrency(sipLoanCost.totalInterest, true)}</strong> in loan interest.
+                  This shows an illustrative difference of <span className="underline font-bold text-[#065f46] text-sm">{formatCurrency(sipComparison.netWealthDifference, true)}</span> over {simulatedTenure} months. Not guaranteed; market returns vary and this does not affect your borrowing recommendation.
                 </p>
               </div>
             </div>

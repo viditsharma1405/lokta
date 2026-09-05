@@ -18,7 +18,7 @@ export const PERSONA_PRIYA: BorrowerProfile = {
 
   // Income — FACT (Lokta)
   documentedIncome: 110000,       // salary ₹1,10,000/month
-  claimedTotalIncome: 110000,     // same (fully verifiable)
+  claimedTotalIncome: 110000,     // same (fully documented)
   undocumentedPortion: 0,
   eligibleIncomeLender: 110000,   // DERIVED
   eligibleIncomeSafe: 110000,     // DERIVED

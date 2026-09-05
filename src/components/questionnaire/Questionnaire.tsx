@@ -17,11 +17,13 @@ import {
   Q_EMPLOYMENT_TENURE,
   Q_VARIABLE_INCOME_SHARE,
   Q_BUSINESS_TENURE,
+  Q_SE_DOC_TYPE,
   Q_DOCUMENTED_INCOME_SE,
   Q_DOCUMENTED_INCOME_ITR,
   Q_INFORMAL_RECORDS,
   Q_INFORMAL_SUPPORTED_AMOUNT,
   Q_COLLATERAL_AVAILABLE,
+  Q_GOLD_COLLATERAL,
   Q_COLLATERAL_VALUE,
   Q_CO_APPLICANT,
   Q_CO_APPLICANT_INCOME,
@@ -229,19 +231,30 @@ export default function Questionnaire({ onComplete }: QuestionnaireProps) {
       const updated = { ...prev, [id]: val };
       if (id === 'income_type') {
         // If income type changes, clear type-specific answers
-        if (val === 'salaried') {
-          delete updated.business_tenure;
-          delete updated.collateral_available;
-          delete updated.collateral_value;
+        delete updated.business_tenure;
+        delete updated.employment_tenure;
+        delete updated.variable_income_share;
+        delete updated.collateral_available;
+        delete updated.gold_collateral;
+        delete updated.collateral_value;
+        delete updated.se_doc_type;
+        delete updated.documented_income_itr;
+        delete updated.documented_monthly_income;
+      } else if (id === 'loan_purpose') {
+        delete updated.collateral_available;
+        delete updated.gold_collateral;
+        delete updated.collateral_value;
+      } else if (id === 'se_doc_type') {
+        if (val === 'none') {
+          delete updated.documented_monthly_income;
           delete updated.documented_income_itr;
-        } else if (val === 'self_employed') {
-          delete updated.employment_tenure;
-          delete updated.variable_income_share;
-        } else if (val === 'informal') {
-          delete updated.business_tenure;
-          delete updated.employment_tenure;
+        } else if (val === 'itr') {
+          delete updated.documented_monthly_income;
+        } else if (val === 'records') {
           delete updated.documented_income_itr;
-          delete updated.collateral_available;
+        }
+      } else if (id === 'gold_collateral') {
+        if (val !== 'yes') {
           delete updated.collateral_value;
         }
       }
@@ -281,17 +294,28 @@ export default function Questionnaire({ onComplete }: QuestionnaireProps) {
     list.push(Q_LOAN_PURPOSE);
     list.push(Q_REQUESTED_AMOUNT);
 
-    // Branch E: Business Purpose Collateral (Unlocks LAP/Gold routing)
+    // Branch E: Business Expansion Collateral (Unlocks LAP/Gold routing)
     if (
       answers.income_type === 'self_employed' &&
-      (answers.loan_purpose === 'business_expansion' ||
-        answers.loan_purpose === 'vehicle' ||
-        answers.loan_purpose === 'other')
+      answers.loan_purpose === 'business_expansion'
     ) {
       list.push(Q_COLLATERAL_AVAILABLE);
 
       const col = answers.collateral_available;
       if (col === 'property_commercial' || col === 'property_residential' || col === 'gold') {
+        list.push(Q_COLLATERAL_VALUE);
+      }
+    }
+
+    // Branch E2: Personal / Emergency Gold Collateral (Unlocks Gold Loan)
+    if (
+      answers.loan_purpose === 'personal_event' ||
+      answers.loan_purpose === 'medical' ||
+      answers.loan_purpose === 'other' ||
+      answers.loan_purpose === 'education'
+    ) {
+      list.push(Q_GOLD_COLLATERAL);
+      if (answers.gold_collateral === 'yes') {
         list.push(Q_COLLATERAL_VALUE);
       }
     }
@@ -302,6 +326,7 @@ export default function Questionnaire({ onComplete }: QuestionnaireProps) {
     answers.income_stability,
     answers.loan_purpose,
     answers.collateral_available,
+    answers.gold_collateral,
   ]);
 
   // ── Step 2 Questions: Cash Flow & Existing Debt ────────────────────────────
@@ -335,8 +360,13 @@ export default function Questionnaire({ onComplete }: QuestionnaireProps) {
 
     // Adaptive documentation questions by borrower segment
     if (answers.income_type === 'self_employed') {
-      list.push(Q_DOCUMENTED_INCOME_SE);
-      list.push(Q_DOCUMENTED_INCOME_ITR);
+      list.push(Q_SE_DOC_TYPE);
+      if (answers.se_doc_type === 'itr' || answers.se_doc_type === 'both') {
+        list.push(Q_DOCUMENTED_INCOME_ITR);
+      }
+      if (answers.se_doc_type === 'records' || answers.se_doc_type === 'both') {
+        list.push(Q_DOCUMENTED_INCOME_SE);
+      }
     } else if (answers.income_type === 'informal') {
       list.push(Q_INFORMAL_RECORDS);
       if (answers.documentation_status === 'partial') {
@@ -388,6 +418,7 @@ export default function Questionnaire({ onComplete }: QuestionnaireProps) {
     return list;
   }, [
     answers.income_type,
+    answers.se_doc_type,
     answers.documentation_status,
     answers.co_applicant,
     answers.dependents,

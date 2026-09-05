@@ -64,6 +64,18 @@ export function buildProvenanceSummary(
       'Documented income recognized at 100% plus conservative tiered recognition on the undocumented portion.',
   });
 
+  // Co-Applicant Income (if present)
+  if (profile.coApplicantIncome > 0) {
+    items.push({
+      id: 'co_applicant_income',
+      label: 'Co-Applicant Monthly Income',
+      value: formatRupees(profile.coApplicantIncome),
+      tag: 'ASSUMPTION' as ProvenanceTag,
+      explanation:
+        'Added to debt-service capacity. Tagged as ASSUMPTION because inclusion in underwriting is conditional on formal joint application with lender.',
+    });
+  }
+
   // 4. Essential Expenses
   items.push({
     id: 'essential_expenses',

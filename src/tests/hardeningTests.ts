@@ -23,7 +23,9 @@ import { computeSIPComparison } from '../engine/emi';
 import { buildProfileFromAnswers, type Answers } from '../questions/questionEngine';
 import {
   Q_BUSINESS_TENURE,
+  Q_SE_DOC_TYPE,
   Q_COLLATERAL_AVAILABLE,
+  Q_GOLD_COLLATERAL,
   Q_COLLATERAL_VALUE,
   Q_DOCUMENTED_INCOME_ITR,
   Q_DOCUMENTED_INCOME_SE,
@@ -109,10 +111,38 @@ assert(
   isQuestionActive(Q_COLLATERAL_AVAILABLE, seAnswers)
 );
 assert(
-  'Branching: Self-employed borrower sees business documentation questions',
-  isQuestionActive(Q_DOCUMENTED_INCOME_SE, seAnswers) &&
-    isQuestionActive(Q_DOCUMENTED_INCOME_ITR, seAnswers)
+  'Branching: Self-employed borrower sees business documentation type question',
+  isQuestionActive(Q_SE_DOC_TYPE, seAnswers)
 );
+
+const seItrOnly: Answers = { ...seAnswers, se_doc_type: 'itr' };
+assert(
+  'Branching: SE with ITR sees ITR question and NOT bank records question',
+  isQuestionActive(Q_DOCUMENTED_INCOME_ITR, seItrOnly) &&
+    !isQuestionActive(Q_DOCUMENTED_INCOME_SE, seItrOnly)
+);
+
+const seRecordsOnly: Answers = { ...seAnswers, se_doc_type: 'records' };
+assert(
+  'Branching: SE with bank records sees records question and NOT ITR question',
+  isQuestionActive(Q_DOCUMENTED_INCOME_SE, seRecordsOnly) &&
+    !isQuestionActive(Q_DOCUMENTED_INCOME_ITR, seRecordsOnly)
+);
+
+const seBothDoc: Answers = { ...seAnswers, se_doc_type: 'both' };
+assert(
+  'Branching: SE with both sees both ITR and records questions',
+  isQuestionActive(Q_DOCUMENTED_INCOME_SE, seBothDoc) &&
+    isQuestionActive(Q_DOCUMENTED_INCOME_ITR, seBothDoc)
+);
+
+const seNoneDoc: Answers = { ...seAnswers, se_doc_type: 'none' };
+assert(
+  'Branching: SE with no documentation sees neither ITR nor records questions',
+  !isQuestionActive(Q_DOCUMENTED_INCOME_SE, seNoneDoc) &&
+    !isQuestionActive(Q_DOCUMENTED_INCOME_ITR, seNoneDoc)
+);
+
 assert(
   'Branching: Self-employed borrower does NOT see corporate employment tenure',
   !isQuestionActive(Q_EMPLOYMENT_TENURE, seAnswers)
@@ -135,6 +165,41 @@ const seNoCollateral: Answers = {
 assert(
   'Branching: Collateral value NOT asked when no collateral selected',
   !isQuestionActive(Q_COLLATERAL_VALUE, seNoCollateral)
+);
+
+// Vehicle loan does NOT ask for property collateral
+const vehicleAnswers: Answers = {
+  income_type: 'self_employed',
+  monthly_income: 60000,
+  loan_purpose: 'vehicle',
+};
+assert(
+  'Routing: Vehicle loan does NOT ask for property collateral',
+  !isQuestionActive(Q_COLLATERAL_AVAILABLE, vehicleAnswers)
+);
+
+// Personal event purpose asks if gold is available
+const personalAnswers: Answers = {
+  income_type: 'salaried',
+  monthly_income: 60000,
+  loan_purpose: 'personal_event',
+};
+assert(
+  'Routing: Personal event purpose reaches gold collateral question',
+  isQuestionActive(Q_GOLD_COLLATERAL, personalAnswers)
+);
+
+// Gold loan routing
+const profileWithGold = buildProfileFromAnswers({
+  ...personalAnswers,
+  gold_collateral: 'yes',
+  collateral_value: 300000,
+});
+const outputGold = runCopilot(profileWithGold);
+assert(
+  'Routing: Gold collateral routes personal purpose to Gold Loan',
+  outputGold.productRoute.recommendedRoute === 'Gold Loan' &&
+    outputGold.productRoute.isSecured === true
 );
 
 // Informal borrower does NOT see ITR by default
@@ -336,6 +401,23 @@ assert(
   )
 );
 
+// Regression test for Section 2: salaried with missing stability
+const profileMissingStability = buildProfileFromAnswers({
+  income_type: 'salaried',
+  monthly_income: 80000,
+  // income_stability field is completely omitted
+});
+assert(
+  'Stability: Missing/unanswered stability remains "unknown" (no silent stable coercion)',
+  profileMissingStability.incomeStability === 'unknown'
+);
+const copilotMissingStability = runCopilot(profileMissingStability);
+assert(
+  'Stability: Missing stability gets no positive rate adjustment and no stable retention bonus',
+  !copilotMissingStability.fairRate.adjustments.some(a => a.factor === 'Stable income') &&
+    copilotMissingStability.safeCapacity.baseRetentionFactorLabel !== 'Salaried, stable income'
+);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // D. REPAYMENT HANDLING (Silence is not clean)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -467,6 +549,37 @@ assert(
 assert(
   'Tenure: LTV-bound lender amount remains unchanged when tenure increases (36m vs 84m)',
   ltv12.lenderLikelyAmount === ltv84.lenderLikelyAmount
+);
+
+// 3. Multi-tenure simulation monotonicity (12, 24, 36, 48, 60 months)
+const t12 = runCopilot(PERSONA_PRIYA, 12);
+const t24 = runCopilot(PERSONA_PRIYA, 24);
+const t36 = runCopilot(PERSONA_PRIYA, 36);
+const t48 = runCopilot(PERSONA_PRIYA, 48);
+const t60 = runCopilot(PERSONA_PRIYA, 60);
+
+assert(
+  'Tenure: Safe EMI ceiling is identical across 12, 24, 36, 48, 60 months',
+  t12.safeCapacity.safeEMI === t24.safeCapacity.safeEMI &&
+    t24.safeCapacity.safeEMI === t36.safeCapacity.safeEMI &&
+    t36.safeCapacity.safeEMI === t48.safeCapacity.safeEMI &&
+    t48.safeCapacity.safeEMI === t60.safeCapacity.safeEMI
+);
+
+assert(
+  'Tenure: Safe principal scales monotonically across 12, 24, 36, 48, 60 months',
+  t12.safeCapacity.safeAmount < t24.safeCapacity.safeAmount &&
+    t24.safeCapacity.safeAmount < t36.safeCapacity.safeAmount &&
+    t36.safeCapacity.safeAmount < t48.safeCapacity.safeAmount &&
+    t48.safeCapacity.safeAmount < t60.safeCapacity.safeAmount
+);
+
+assert(
+  'Tenure: Lender amount scales monotonically across 12, 24, 36, 48, 60 months for unsecured loan',
+  t12.lenderCapacity.lenderLikelyAmount < t24.lenderCapacity.lenderLikelyAmount &&
+    t24.lenderCapacity.lenderLikelyAmount < t36.lenderCapacity.lenderLikelyAmount &&
+    t36.lenderCapacity.lenderLikelyAmount < t48.lenderCapacity.lenderLikelyAmount &&
+    t48.lenderCapacity.lenderLikelyAmount < t60.lenderCapacity.lenderLikelyAmount
 );
 
 // ─────────────────────────────────────────────────────────────────────────────

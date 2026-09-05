@@ -325,8 +325,8 @@ export const Q_EMPLOYMENT_TENURE: QuestionDef = {
   allowUnknown: true,
   unknownLabel: 'Prefer not to say',
   condition: answers => answers.income_type === 'salaried',
-  affects: ['fairRate', 'lenderCapacity'],
-  reason: 'Tenure ≥3 years gives favorable rate positioning and higher lender confidence.',
+  affects: ['confidence'],
+  reason: 'Provides context on job continuity and helps gauge underwriting readiness for lenders.',
   group: 'employment',
 };
 
@@ -379,10 +379,28 @@ export const Q_BUSINESS_TENURE: QuestionDef = {
   group: 'employment',
 };
 
+export const Q_SE_DOC_TYPE: QuestionDef = {
+  id: 'se_doc_type',
+  label: 'How do you document your business income?',
+  helpText: 'Select the primary records you have available to present to lenders.',
+  whyWeAsk: 'Determines whether we evaluate your income via annual ITR, monthly business records, or cash assessment.',
+  type: 'select',
+  options: [
+    { value: 'itr', label: 'ITR (Income Tax Returns)' },
+    { value: 'records', label: 'Bank statements / business records' },
+    { value: 'both', label: 'Both ITR and bank statements / business records' },
+    { value: 'none', label: 'Not documented / Cash only' },
+  ],
+  condition: answers => answers.income_type === 'self_employed',
+  affects: ['lenderCapacity', 'fairRate'],
+  reason: 'Routes to the specific documentation question needed without redundant asking.',
+  group: 'income',
+};
+
 export const Q_DOCUMENTED_INCOME_SE: QuestionDef = {
   id: 'documented_monthly_income',
   label: 'How much of this monthly income can you support with records?',
-  helpText: 'Examples: ITR, audited financials, current account bank statements, GST returns, or verified invoices.',
+  helpText: 'Examples: current account bank statements, GST returns, or commercial invoices / bills.',
   whyWeAsk: 'Documented income receives 100% lender recognition. Undocumented cash surplus receives conservative tiered recognition.',
   type: 'currency',
   placeholder: '35,000',
@@ -390,7 +408,9 @@ export const Q_DOCUMENTED_INCOME_SE: QuestionDef = {
   suffix: '/month',
   allowUnknown: true,
   unknownLabel: "I don't have formal records / All cash (₹0 documented)",
-  condition: answers => answers.income_type === 'self_employed',
+  condition: answers =>
+    answers.income_type === 'self_employed' &&
+    (answers.se_doc_type === 'records' || answers.se_doc_type === 'both' || !answers.se_doc_type),
   affects: ['lenderCapacity', 'confidence'],
   reason: 'Documented portion is recognized at 100%; undocumented portion receives 75%/50%/25% tiered recognition.',
   group: 'income',
@@ -407,7 +427,9 @@ export const Q_DOCUMENTED_INCOME_ITR: QuestionDef = {
   suffix: '/year',
   allowUnknown: true,
   unknownLabel: "I don't file ITR",
-  condition: answers => answers.income_type === 'self_employed',
+  condition: answers =>
+    answers.income_type === 'self_employed' &&
+    (answers.se_doc_type === 'itr' || answers.se_doc_type === 'both' || !answers.se_doc_type),
   affects: ['lenderCapacity', 'fairRate'],
   reason: 'Annual ITR / 12 establishes formal documented income baseline.',
   group: 'income',
@@ -415,6 +437,7 @@ export const Q_DOCUMENTED_INCOME_ITR: QuestionDef = {
 
 export const SELF_EMPLOYED_QUESTIONS: QuestionDef[] = [
   Q_BUSINESS_TENURE,
+  Q_SE_DOC_TYPE,
   Q_DOCUMENTED_INCOME_SE,
   Q_DOCUMENTED_INCOME_ITR,
 ];
@@ -470,7 +493,7 @@ export const INFORMAL_QUESTIONS: QuestionDef[] = [
 export const Q_COLLATERAL_AVAILABLE: QuestionDef = {
   id: 'collateral_available',
   label: 'Do you have collateral you could potentially use for a secured loan?',
-  helpText: 'Pledging commercial or residential property or gold allows Loan Against Property (LAP) with longer tenures and lower interest rates.',
+  helpText: 'Pledging commercial or residential property or gold allows Loan Against Property (LAP) or Gold Loan with longer tenures and lower interest rates.',
   whyWeAsk: 'Unsecured business loans cost 17%–28%. LAP or Gold loans cost 9.5%–15% and support much higher borrowing amounts.',
   type: 'select',
   options: [
@@ -483,25 +506,52 @@ export const Q_COLLATERAL_AVAILABLE: QuestionDef = {
   unknownLabel: "I don't know if my assets qualify",
   condition: answers =>
     answers.income_type === 'self_employed' &&
-    (answers.loan_purpose === 'business_expansion' || answers.loan_purpose === 'vehicle' || answers.loan_purpose === 'other'),
+    answers.loan_purpose === 'business_expansion',
   affects: ['productRoute', 'lenderCapacity', 'fairRate'],
   reason: 'Routes self-employed borrowers to LAP/Gold loan products, enabling LTV evaluation and 60% secured FOIR.',
+  group: 'loan',
+};
+
+export const Q_GOLD_COLLATERAL: QuestionDef = {
+  id: 'gold_collateral',
+  label: 'Do you have gold jewellery or ornaments you could pledge as collateral?',
+  helpText: 'Pledging gold provides fast access to secured Gold Loans with lower interest rates (9%–16%) than unsecured personal loans (11%–26%).',
+  whyWeAsk: 'Gold loans are available across salaried, self-employed, and informal borrowers for personal, medical, or family emergency needs.',
+  type: 'select',
+  options: [
+    { value: 'yes', label: 'Yes — I have gold jewellery / ornaments' },
+    { value: 'no', label: 'No — seeking an unsecured loan' },
+  ],
+  allowUnknown: true,
+  unknownLabel: 'Not sure / Prefer unsecured',
+  condition: answers =>
+    answers.loan_purpose === 'personal_event' ||
+    answers.loan_purpose === 'medical' ||
+    answers.loan_purpose === 'other' ||
+    answers.loan_purpose === 'education',
+  affects: ['productRoute', 'lenderCapacity', 'fairRate'],
+  reason: 'Routes personal/emergency borrowing to lower-rate secured Gold Loans.',
   group: 'loan',
 };
 
 export const Q_COLLATERAL_VALUE: QuestionDef = {
   id: 'collateral_value',
   label: 'What is the approximate market value of your collateral property/gold?',
-  helpText: 'Conservative estimate. Lenders apply an initial 20% haircut and an LTV ceiling (e.g. 65% for commercial, 75% for residential).',
+  helpText: 'Conservative estimate. Lenders apply an initial 20% haircut and an LTV ceiling (e.g. 65% for commercial, 75% for residential/gold).',
   whyWeAsk: 'LTV-supported principal is calculated as: Collateral Value × (1 − 20% Haircut) × LTV.',
   type: 'currency',
   placeholder: '45,00,000',
   prefix: '₹',
   allowUnknown: true,
-  unknownLabel: "I don't know exact property valuation",
+  unknownLabel: "I don't know exact valuation",
   condition: answers => {
     const col = answers.collateral_available;
-    return col === 'property_commercial' || col === 'property_residential' || col === 'gold';
+    return (
+      col === 'property_commercial' ||
+      col === 'property_residential' ||
+      col === 'gold' ||
+      answers.gold_collateral === 'yes'
+    );
   },
   affects: ['lenderCapacity'],
   reason: 'Collateral value × (1 − haircut) × LTV sets the LTV-supported borrowing ceiling.',
@@ -533,7 +583,7 @@ export const Q_CO_APPLICANT: QuestionDef = {
 export const Q_CO_APPLICANT_INCOME: QuestionDef = {
   id: 'co_applicant_income',
   label: 'Approximately how much monthly documented income will the co-applicant contribute?',
-  helpText: 'Their verifiable salary, ITR income, or bank-recorded earnings.',
+  helpText: 'Their reported salary, ITR income, or bank-recorded earnings.',
   whyWeAsk: 'This documented income is added directly to both lender FOIR capacity and safe disposable cash flow.',
   type: 'currency',
   placeholder: '18,000',
