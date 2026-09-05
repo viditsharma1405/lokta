@@ -691,7 +691,7 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                 </div>
                 <div>
                   <p className="text-xs text-[#71717a] font-medium">Estimated EMI at {effectiveInterestRate.toFixed(1)}% for {simulatedTenure} months</p>
-                  <p className="text-2xl font-black text-[#5a2045] mt-0.5">{formatEMI(requestedLoanCalculations.emi)}/mo</p>
+                  <p className="text-2xl font-black text-[#5a2045] mt-0.5">{formatEMI(requestedLoanCalculations.emi)}</p>
                   <p className="text-[11px] text-[#71717a] mt-0.5">Actual monthly installment for this loan</p>
                 </div>
                 <div>
@@ -713,8 +713,8 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                   <span className="text-sm">{requestedLoanCalculations.isBelowCeiling ? '✓' : '⚠'}</span>
                   <span>
                     {requestedLoanCalculations.isBelowCeiling
-                      ? `Your requested EMI (${formatEMI(requestedLoanCalculations.emi)}/mo) is below your estimated safe ceiling (${formatEMI(safeCapacity.safeEMI)}/mo).`
-                      : `Your requested EMI (${formatEMI(requestedLoanCalculations.emi)}/mo) is above your estimated safe ceiling (${formatEMI(safeCapacity.safeEMI)}/mo) by ${formatEMI(requestedLoanCalculations.emi - safeCapacity.safeEMI)}/mo.`}
+                      ? `Your requested EMI (${formatEMI(requestedLoanCalculations.emi)}) is below your estimated safe ceiling (${formatEMI(safeCapacity.safeEMI)}).`
+                      : `Your requested EMI (${formatEMI(requestedLoanCalculations.emi)}) is above your estimated safe ceiling (${formatEMI(safeCapacity.safeEMI)}) by ${formatEMI(requestedLoanCalculations.emi - safeCapacity.safeEMI)}.`}
                   </span>
                 </div>
                 <div className="text-[11px] font-bold shrink-0 bg-white/70 px-2 py-0.5 rounded border border-current">
@@ -723,7 +723,7 @@ export default function ResultsDashboard({ profile, output: _output, personaName
               </div>
             </div>
 
-            {/* Section 3 & 8: Make the Three Numbers Distinct */}
+            {/* Section 3 & 8: Make the Four Numbers Distinct */}
             <div>
               <div className="flex justify-between items-center mb-2">
                 <h4 className="text-xs font-bold text-[#18181b] uppercase tracking-wider">
@@ -733,50 +733,66 @@ export default function ResultsDashboard({ profile, output: _output, personaName
               </div>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
                 {/* 1. Requested Loan EMI */}
-                <div className="bg-white rounded-xl border-2 border-[#e8d0e0] p-3 sm:p-3.5 shadow-xs">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-[11px] font-bold text-[#5a2045]">Requested Loan EMI</p>
-                    <span className="text-[9px] bg-[#faf4f8] text-[#5a2045] font-bold px-1.5 py-0.5 rounded border border-[#e8d0e0]">Wanted</span>
+                <div className="min-w-0 bg-white rounded-xl border-2 border-[#e8d0e0] p-3 shadow-xs flex flex-col justify-between overflow-hidden">
+                  <div>
+                    <div className="flex items-center justify-between gap-1 mb-1.5">
+                      <p className="text-[11px] font-bold text-[#5a2045] truncate">Requested EMI</p>
+                      <span className="text-[9px] bg-[#faf4f8] text-[#5a2045] font-bold px-1.5 py-0.5 rounded border border-[#e8d0e0] shrink-0">Wanted</span>
+                    </div>
+                    <p className="text-base sm:text-lg font-black text-[#5a2045] tracking-tight truncate">
+                      {formatEMI(requestedLoanCalculations.emi)}
+                    </p>
                   </div>
-                  <p className="text-base sm:text-xl font-extrabold text-[#5a2045]">{formatEMI(requestedLoanCalculations.emi)}/mo</p>
-                  <p className="text-[10px] text-[#71717a] mt-1 leading-tight">
-                    EMI for the {formatLakhs(requestedAmount)} loan you want (at {effectiveInterestRate.toFixed(1)}% over {simulatedTenure}m)
+                  <p className="text-[10px] text-[#71717a] mt-1.5 leading-tight">
+                    EMI for {formatLakhs(requestedAmount)} loan at {effectiveInterestRate.toFixed(1)}% ({simulatedTenure}m)
                   </p>
                 </div>
 
                 {/* 2. Borrower-Safe EMI Ceiling */}
-                <div className="bg-[#f2f8f4] rounded-xl border-2 border-[#a7f3d0] p-3 sm:p-3.5 shadow-xs">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-[11px] font-bold text-[#065f46]">Borrower-Safe Ceiling</p>
-                    <span className="text-[9px] bg-[#ecfdf5] text-[#065f46] font-bold px-1.5 py-0.5 rounded border border-[#a7f3d0]">Limit</span>
+                <div className="min-w-0 bg-[#f2f8f4] rounded-xl border-2 border-[#a7f3d0] p-3 shadow-xs flex flex-col justify-between overflow-hidden">
+                  <div>
+                    <div className="flex items-center justify-between gap-1 mb-1.5">
+                      <p className="text-[11px] font-bold text-[#065f46] truncate">Safe Ceiling</p>
+                      <span className="text-[9px] bg-[#ecfdf5] text-[#065f46] font-bold px-1.5 py-0.5 rounded border border-[#a7f3d0] shrink-0">Limit</span>
+                    </div>
+                    <p className="text-base sm:text-lg font-black text-[#065f46] tracking-tight truncate">
+                      {formatEMI(safeCapacity.safeEMI)}
+                    </p>
                   </div>
-                  <p className="text-base sm:text-xl font-extrabold text-[#065f46]">{formatEMI(safeCapacity.safeEMI)}/mo</p>
-                  <p className="text-[10px] text-red-600 font-semibold mt-1 leading-tight">
-                    Maximum monthly EMI we consider prudent (Do not cross)
+                  <p className="text-[10px] text-red-600 font-semibold mt-1.5 leading-tight">
+                    Maximum monthly payment considered prudent (Do not cross)
                   </p>
                 </div>
 
                 {/* 3. Recommended EMI Ceiling */}
-                <div className="bg-white rounded-xl border border-[#eae3d9] p-3 sm:p-3.5 shadow-xs">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-[11px] font-bold text-[#18181b]">Recommended Ceiling</p>
-                    <span className="text-[9px] bg-[#faf7f2] text-[#71717a] font-bold px-1.5 py-0.5 rounded border border-[#eae3d9]">90% Buffer</span>
+                <div className="min-w-0 bg-white rounded-xl border border-[#eae3d9] p-3 shadow-xs flex flex-col justify-between overflow-hidden">
+                  <div>
+                    <div className="flex items-center justify-between gap-1 mb-1.5">
+                      <p className="text-[11px] font-bold text-[#18181b] truncate">Recommended</p>
+                      <span className="text-[9px] bg-[#faf7f2] text-[#71717a] font-bold px-1.5 py-0.5 rounded border border-[#eae3d9] shrink-0">90% Buffer</span>
+                    </div>
+                    <p className="text-base sm:text-lg font-black text-[#18181b] tracking-tight truncate">
+                      {formatEMI(safeCapacity.recommendedEMI)}
+                    </p>
                   </div>
-                  <p className="text-base sm:text-xl font-extrabold text-[#18181b]">{formatEMI(safeCapacity.recommendedEMI)}/mo</p>
-                  <p className="text-[10px] text-[#71717a] mt-1 leading-tight">
-                    Safe ceiling × 90% presentation headroom to absorb shocks
+                  <p className="text-[10px] text-[#71717a] mt-1.5 leading-tight">
+                    Safe ceiling × 90% presentation buffer for unplanned shocks
                   </p>
                 </div>
 
                 {/* 4. Lender Max EMI */}
-                <div className="bg-white rounded-xl border border-[#eae3d9] p-3 sm:p-3.5 shadow-xs">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-[11px] font-bold text-[#71717a]">Lender Max EMI</p>
-                    <span className="text-[9px] bg-[#faf7f2] text-[#71717a] font-bold px-1.5 py-0.5 rounded border border-[#eae3d9]">FOIR Cap</span>
+                <div className="min-w-0 bg-white rounded-xl border border-[#eae3d9] p-3 shadow-xs flex flex-col justify-between overflow-hidden">
+                  <div>
+                    <div className="flex items-center justify-between gap-1 mb-1.5">
+                      <p className="text-[11px] font-bold text-[#71717a] truncate">Lender Max</p>
+                      <span className="text-[9px] bg-[#faf7f2] text-[#71717a] font-bold px-1.5 py-0.5 rounded border border-[#eae3d9] shrink-0">FOIR Cap</span>
+                    </div>
+                    <p className="text-base sm:text-lg font-black text-[#71717a] tracking-tight truncate">
+                      {formatEMI(lenderCapacity.availableNewEMI)}
+                    </p>
                   </div>
-                  <p className="text-base sm:text-xl font-extrabold text-[#71717a]">{formatEMI(lenderCapacity.availableNewEMI)}/mo</p>
-                  <p className="text-[10px] text-[#71717a] mt-1 leading-tight">
-                    Lender-side FOIR formula capacity ignoring living costs
+                  <p className="text-[10px] text-[#71717a] mt-1.5 leading-tight">
+                    Lender-side gross FOIR capacity formula ignoring living costs
                   </p>
                 </div>
               </div>
@@ -791,7 +807,7 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                 <strong>Safe EMI ceiling is the maximum monthly loan payment we estimate you can comfortably carry. It is NOT the EMI for your requested loan.</strong>
               </p>
               <p className="text-[#71717a] mt-1">
-                Why your safe ceiling is {formatEMI(safeCapacity.safeEMI)}/mo and not higher: It reserves exactly {(safeCapacity.adjustedRetentionFactor * 100).toFixed(0)}% of your {formatCurrency(safeCapacity.disposableCashFlow, true)} disposable monthly surplus (after essentials &amp; existing debt) so you never risk default.
+                Why your safe ceiling is {formatEMI(safeCapacity.safeEMI)} and not higher: It reserves exactly {(safeCapacity.adjustedRetentionFactor * 100).toFixed(0)}% of your {formatCurrency(safeCapacity.disposableCashFlow, true)} disposable monthly surplus (after essentials &amp; existing debt) so you never risk default.
               </p>
             </div>
 
@@ -825,7 +841,7 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                       type="button"
                       key={t}
                       onClick={() => setSimulatedTenure(t)}
-                      className={`rounded-lg p-3 text-left border transition-all cursor-pointer ${
+                      className={`rounded-lg p-3 text-left border transition-all cursor-pointer overflow-hidden ${
                         isSimulated ? 'border-[#5a2045] ring-2 ring-[#5a2045] bg-[#faf4f8]' :
                         isDefault ? 'border-[#e8d0e0] bg-[#faf7f2]' :
                         isAboveCeiling ? 'border-red-200 bg-red-50' :
@@ -838,10 +854,10 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                         {!isSimulated && isDefault && <span className="text-[9px] text-[#5a2045] font-semibold">Def</span>}
                       </div>
                       <p className="text-[10px] text-[#71717a]">Safe-amount scenario:</p>
-                      <p className={`text-sm font-bold ${isSimulated ? 'text-[#5a2045]' : isDefault ? 'text-[#5a2045]' : isAboveCeiling ? 'text-red-600' : 'text-[#18181b]'}`}>
-                        {formatEMI(simSafeEMI)}/mo
+                      <p className={`text-sm sm:text-base font-bold tracking-tight truncate ${isSimulated ? 'text-[#5a2045]' : isDefault ? 'text-[#5a2045]' : isAboveCeiling ? 'text-red-600' : 'text-[#18181b]'}`}>
+                        {formatEMI(simSafeEMI)}
                       </p>
-                      <p className="text-xs text-[#71717a] mt-0.5">Total repayment: {formatCurrency(simSafeTotal, true)}</p>
+                      <p className="text-xs text-[#71717a] mt-0.5 truncate">Total repayment: {formatCurrency(simSafeTotal, true)}</p>
                       {isAboveCeiling && <p className="text-xs text-red-600 font-medium mt-0.5">↑ exceeds safe ceiling</p>}
                     </button>
                   );
@@ -989,7 +1005,7 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                   <span className="text-xs font-bold text-red-800 uppercase tracking-wide">Path A: Take the Loan</span>
                 </div>
                 <p className="text-xs text-[#71717a] mb-0.5">Monthly loan payment ({formatLakhs(sipPrincipal)} at {simulatedTenure} mo):</p>
-                <p className="text-lg font-bold text-red-600 mb-3">{formatEMI(sipComparison.monthlyInvestment)}/mo</p>
+                <p className="text-lg font-bold text-red-600 mb-3">{formatEMI(sipComparison.monthlyInvestment)}</p>
                 <div className="space-y-1.5 text-xs border-t border-red-100 pt-2 text-[#52525b]">
                   <div className="flex justify-between">
                     <span>Total cash paid:</span>
@@ -1013,7 +1029,7 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                   <span className="text-xs font-bold text-[#065f46] uppercase tracking-wide">Path B: Invest in SIP</span>
                 </div>
                 <p className="text-xs text-[#71717a] mb-0.5">Monthly deposit for {simulatedTenure} mo:</p>
-                <p className="text-lg font-bold text-[#065f46] mb-3">{formatEMI(sipComparison.monthlyInvestment)}/mo</p>
+                <p className="text-lg font-bold text-[#065f46] mb-3">{formatEMI(sipComparison.monthlyInvestment)}</p>
                 <div className="space-y-1.5 text-xs border-t border-emerald-100 pt-2 text-[#52525b]">
                   <div className="flex justify-between">
                     <span>Total principal saved:</span>

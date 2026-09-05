@@ -176,7 +176,7 @@ export default function NegotiationCardView({ profile, output, personaName, onBa
             </div>
             <p className="text-lg sm:text-xl font-extrabold text-[#065f46]">{formatCurrency(cardSIP.futureValue, true)}</p>
             <p className="text-xs text-[#064e3b] mt-1 leading-relaxed">
-              At an assumed 12% annual return, investing {formatEMI(cardSIP.monthlyInvestment)}/mo creates a {formatCurrency(cardSIP.futureValue, true)} portfolio (+{formatCurrency(cardSIP.wealthGain, true)} returns) instead of paying interest.
+              At an assumed 12% annual return, investing {formatEMI(cardSIP.monthlyInvestment)} creates a {formatCurrency(cardSIP.futureValue, true)} portfolio (+{formatCurrency(cardSIP.wealthGain, true)} returns) instead of paying interest.
             </p>
             <p className="text-[11px] text-[#065f46] font-semibold mt-1">
               Not guaranteed; market returns can be lower or negative • Net wealth swing: {formatCurrency(cardSIP.netWealthDifference, true)} in your favour
