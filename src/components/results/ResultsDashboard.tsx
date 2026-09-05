@@ -237,9 +237,21 @@ export default function ResultsDashboard({ profile, output: _output, personaName
   const [requestedAmount, setRequestedAmount] = useState(Math.round(profile.requestedAmount));
   const [highCostEMI, setHighCostEMI] = useState(Math.round(profile.highCostDebtEMI));
 
+  const hasCollateral =
+    profile.collateral.type !== 'none' &&
+    profile.collateral.willingToPledge === 'yes' &&
+    (profile.collateral.statedValue ?? 0) > 0;
+
+  const [collateralValue, setCollateralValue] = useState<number>(
+    profile.collateral.statedValue ?? 0
+  );
+
   // Rebuild profile when input sliders change
   const updatedProfile = useMemo<BorrowerProfile>(() => {
-    const loanTypeKey = determineLoanTypeKey(profile);
+    const currentCollateral = hasCollateral
+      ? { ...profile.collateral, statedValue: collateralValue }
+      : profile.collateral;
+    const loanTypeKey = determineLoanTypeKey({ ...profile, collateral: currentCollateral });
     const secured = isSecuredProduct(loanTypeKey);
     
     // If the borrower is salaried or fully documented, their documented income equals their total income
@@ -271,6 +283,7 @@ export default function ResultsDashboard({ profile, output: _output, personaName
 
     return {
       ...profile,
+      collateral: currentCollateral,
       documentedIncome: dynamicDocumentedIncome,
       claimedTotalIncome: income,
       undocumentedPortion,
@@ -284,7 +297,7 @@ export default function ResultsDashboard({ profile, output: _output, personaName
       highCostDebtEMIIsDefaulted: false,
       requestedAmount,
     };
-  }, [income, expenses, existingEMI, requestedAmount, highCostEMI, profile]);
+  }, [income, expenses, existingEMI, requestedAmount, highCostEMI, collateralValue, hasCollateral, profile]);
 
   // Primary Assessment (at product default tenure) — remains the baseline
   const output = useMemo<CopilotOutput>(() => {
@@ -294,9 +307,21 @@ export default function ResultsDashboard({ profile, output: _output, personaName
   const { lenderCapacity, safeCapacity, fairRate, effectiveCost, stress, decision, productRoute } = output;
   const isDontBorrow = decision.verdict === 'DONT_BORROW';
 
-  const loanTypeKey = determineLoanTypeKey(profile);
+  const loanTypeKey = determineLoanTypeKey(updatedProfile);
   const defaultTenure = TENURE_DEFAULTS[loanTypeKey] ?? 36;
   const tenureOpts = TENURE_OPTIONS[loanTypeKey] ?? [12, 24, 36, 48, 60];
+
+  const activeCollateralVal = updatedProfile.collateral.statedValue ?? profile.collateral.statedValue ?? 0;
+  const illustrativeLtvPct = (lenderCapacity.ltvSupportedAmount !== null && activeCollateralVal > 0)
+    ? Math.round((lenderCapacity.ltvSupportedAmount / activeCollateralVal) * 100)
+    : 0;
+
+  const collateralExplanation =
+    lenderCapacity.bindingConstraint === 'ltv'
+      ? `Estimated repayment capacity supports ${formatLakhs(lenderCapacity.foirSupportedAmount)}, but your collateral supports approximately ${formatLakhs(lenderCapacity.ltvSupportedAmount ?? 0)} based on the illustrative LTV (${illustrativeLtvPct}%). We use the lower of the two.`
+      : lenderCapacity.bindingConstraint === 'foir'
+      ? `Your collateral could support approximately ${formatLakhs(lenderCapacity.ltvSupportedAmount ?? 0)} based on the illustrative LTV (${illustrativeLtvPct}%), but estimated repayment capacity supports ${formatLakhs(lenderCapacity.foirSupportedAmount)}. We use the lower of the two.`
+      : `Both your collateral and estimated repayment capacity support approximately ${formatLakhs(lenderCapacity.lenderLikelyAmount)}.`;
 
   // Interactive Tenure Simulator state (initialized strictly to default tenure)
   const [simulatedTenure, setSimulatedTenure] = useState<number>(defaultTenure);
@@ -487,6 +512,19 @@ export default function ResultsDashboard({ profile, output: _output, personaName
               format={v => formatCurrency(v, true)}
               color="lokta"
             />
+            {hasCollateral && (
+              <InputSlider
+                label="Collateral value"
+                value={collateralValue}
+                min={100000}
+                max={Math.max(collateralValue * 2.5, 10000000)}
+                step={100000}
+                onChange={setCollateralValue}
+                format={v => formatCurrency(v, true)}
+                color="lokta"
+                hint={`${profile.collateral.type === 'property_commercial' ? 'Commercial property' : profile.collateral.type === 'property_residential' ? 'Residential property' : 'Gold'} collateral`}
+              />
+            )}
             <TenureSlider
               label="Loan tenure"
               value={simulatedTenure}
@@ -627,9 +665,51 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                   Range: {formatLakhs(lenderCapacity.lenderLikelyAmountRange.low)}–{formatLakhs(lenderCapacity.lenderLikelyAmountRange.high)}
                 </p>
               )}
-              <p className="text-xs text-[#71717a] mt-0.5">
-                Baseline at {defaultTenure}mo default · FOIR: {(lenderCapacity.foir * 100).toFixed(0)}% of lender-recognized income
-              </p>
+              {lenderCapacity.ltvSupportedAmount !== null ? (
+                <div className="mt-3 pt-2.5 border-t border-[#eae3d9] space-y-1.5 bg-[#faf7f2] p-2.5 rounded-lg border border-[#eae3d9]">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[#71717a]">Collateral value:</span>
+                    <span className="font-semibold text-[#18181b]">{formatLakhs(activeCollateralVal)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[#71717a]">Illustrative LTV:</span>
+                    <span className="font-semibold text-[#18181b]">{illustrativeLtvPct}%</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[#71717a]">Collateral-supported amount:</span>
+                    <span className={`font-semibold ${lenderCapacity.bindingConstraint === 'ltv' ? 'text-[#5a2045] font-bold' : 'text-[#18181b]'}`}>
+                      {formatLakhs(lenderCapacity.ltvSupportedAmount)}
+                      {lenderCapacity.bindingConstraint === 'ltv' && (
+                        <span className="ml-1 text-[10px] bg-[#f4e7f0] text-[#5a2045] px-1 py-0.2 rounded font-bold border border-[#e8d0e0]">
+                          Binding
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[#71717a]">Repayment-capacity-supported amount:</span>
+                    <span className={`font-semibold ${lenderCapacity.bindingConstraint === 'foir' ? 'text-[#5a2045] font-bold' : 'text-[#18181b]'}`}>
+                      {formatLakhs(lenderCapacity.foirSupportedAmount)}
+                      {lenderCapacity.bindingConstraint === 'foir' && (
+                        <span className="ml-1 text-[10px] bg-[#f4e7f0] text-[#5a2045] px-1 py-0.2 rounded font-bold border border-[#e8d0e0]">
+                          Binding
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs pt-1.5 border-t border-[#eae3d9]">
+                    <span className="font-bold text-[#5a2045]">Estimated lender-likely amount:</span>
+                    <span className="font-extrabold text-[#5a2045] text-sm">{formatLakhs(lenderCapacity.lenderLikelyAmount)}</span>
+                  </div>
+                  <p className="text-[11px] text-[#52525b] mt-1.5 leading-relaxed italic">
+                    {collateralExplanation}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-[#71717a] mt-0.5">
+                  Baseline at {defaultTenure}mo default · FOIR: {(lenderCapacity.foir * 100).toFixed(0)}% of lender-recognized income
+                </p>
+              )}
               {simulatedTenure !== defaultTenure && (
                 <div className="mt-2 pt-2 border-t border-[#eae3d9] text-xs">
                   <span className="text-[#71717a]">What-If at {simulatedTenure}mo: </span>
@@ -688,13 +768,6 @@ export default function ResultsDashboard({ profile, output: _output, personaName
             </div>
           </div>
 
-          {/* Rule 4: Hierarchy & Why Amounts Differ */}
-          <div className="bg-[#faf7f2] rounded-xl p-3.5 border border-[#eae3d9] text-xs text-[#52525b] flex items-start gap-2.5">
-            <span className="text-[#5a2045] font-bold shrink-0">Borrowing hierarchy:</span>
-            <span>
-              <strong>Lender-Likely ({formatLakhs(lenderCapacity.lenderLikelyAmount)})</strong> reflects the lender's gross FOIR formula ignoring your family living costs. <strong>Borrower-Safe Ceiling ({formatLakhs(safeCapacity.safeAmount)})</strong> is the maximum principal supported by your safe EMI ceiling. <strong>Recommended Target ({formatLakhs(safeCapacity.recommendedAmount)})</strong> is 90% of your safe ceiling, leaving additional headroom — negotiate toward this target.
-            </span>
-          </div>
 
           {/* ── Requested Loan vs. Safe EMI Ceiling ── */}
           <div className="bg-white rounded-2xl border border-[#eae3d9] p-4 sm:p-5 shadow-xs space-y-5">

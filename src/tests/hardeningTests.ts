@@ -1105,6 +1105,113 @@ const routeNoColPersonal = computeProductRoute({
 });
 assert('Collateral 10: No collateral personal → Unsecured Personal Loan', routeNoColPersonal.recommendedRoute === 'Personal Loan' && routeNoColPersonal.isSecured === false);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// P. COLLATERAL DATA FLOW & LTV BINDING CONSTRAINT TESTS (TESTS 1–5)
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n── P. Collateral Data Flow & LTV Binding Constraint Tests ──');
+
+// Setup: Commercial property at 60% LTV with FOIR-supported capacity = ₹24L (exact 24,00,000)
+// At 12% interest over 84 months (LAP Commercial default):
+// computeEMI(2400000, 12, 84) = 42366.55871...
+// With 60% secured FOIR, required eligibleIncomeLender = targetEMI / 0.60
+const foir24LEMI = computeEMI(2400000, 12, 84);
+const foir24LIncome = foir24LEMI / 0.60;
+
+const base24LCommercialProfile: BorrowerProfile = {
+  ...PERSONA_RAVI,
+  loanPurpose: 'business_expansion',
+  eligibleIncomeLender: foir24LIncome,
+  existingEMI: 0,
+  businessDebtEMI: 0,
+  highCostDebtEMI: 0,
+  collateral: { type: 'property_commercial', statedValue: 4500000, willingToPledge: 'yes' },
+};
+
+// Test 1: Commercial property ₹45L, LTV 60%, FOIR-supported ₹24L → lender-likely ₹24L
+const t1Result = computeLenderCapacity(base24LCommercialProfile, 12, 84);
+assert(
+  'Test 1: Commercial property ₹45L, LTV 60%, FOIR-supported ₹24L → lender-likely ₹24L',
+  Math.round(t1Result.foirSupportedAmount) === 2400000 &&
+  t1Result.ltvSupportedAmount === 2700000 &&
+  Math.round(t1Result.lenderLikelyAmount) === 2400000 &&
+  t1Result.bindingConstraint === 'foir'
+);
+
+// Test 2: Commercial property ₹30L, LTV 60%, FOIR-supported ₹24L → lender-likely ₹18L
+const t2Profile: BorrowerProfile = {
+  ...base24LCommercialProfile,
+  collateral: { type: 'property_commercial', statedValue: 3000000, willingToPledge: 'yes' },
+};
+const t2Result = computeLenderCapacity(t2Profile, 12, 84);
+assert(
+  'Test 2: Commercial property ₹30L, LTV 60%, FOIR-supported ₹24L → lender-likely ₹18L',
+  Math.round(t2Result.foirSupportedAmount) === 2400000 &&
+  t2Result.ltvSupportedAmount === 1800000 &&
+  Math.round(t2Result.lenderLikelyAmount) === 1800000 &&
+  t2Result.bindingConstraint === 'ltv'
+);
+
+// Test 3: Commercial property ₹60L, LTV 60%, FOIR-supported ₹24L → lender-likely ₹24L
+const t3Profile: BorrowerProfile = {
+  ...base24LCommercialProfile,
+  collateral: { type: 'property_commercial', statedValue: 6000000, willingToPledge: 'yes' },
+};
+const t3Result = computeLenderCapacity(t3Profile, 12, 84);
+assert(
+  'Test 3: Commercial property ₹60L, LTV 60%, FOIR-supported ₹24L → lender-likely ₹24L',
+  Math.round(t3Result.foirSupportedAmount) === 2400000 &&
+  t3Result.ltvSupportedAmount === 3600000 &&
+  Math.round(t3Result.lenderLikelyAmount) === 2400000 &&
+  t3Result.bindingConstraint === 'foir'
+);
+
+// Test 4: No collateral → no LTV constraint; lender-likely should use the applicable non-LTV capacity logic
+const t4Profile: BorrowerProfile = {
+  ...base24LCommercialProfile,
+  collateral: { type: 'none', statedValue: null, willingToPledge: 'no' },
+};
+const t4Result = computeLenderCapacity(t4Profile, 12, 84);
+assert(
+  'Test 4: No collateral → no LTV constraint; lender-likely uses applicable non-LTV capacity logic',
+  t4Result.ltvSupportedAmount === null &&
+  t4Result.bindingConstraint === 'foir' &&
+  t4Result.lenderLikelyAmount === t4Result.foirSupportedAmount
+);
+
+// Test 5: Changing only collateral value should change lender-likely whenever the LTV constraint becomes binding
+const t5Result45 = computeLenderCapacity(base24LCommercialProfile, 12, 84);
+const t5Result30 = computeLenderCapacity({
+  ...base24LCommercialProfile,
+  collateral: { type: 'property_commercial', statedValue: 3000000, willingToPledge: 'yes' },
+}, 12, 84);
+assert(
+  'Test 5: Changing only collateral value changes lender-likely whenever LTV constraint becomes binding',
+  Math.round(t5Result45.lenderLikelyAmount) === 2400000 &&
+  Math.round(t5Result30.lenderLikelyAmount) === 1800000 &&
+  t5Result45.lenderLikelyAmount !== t5Result30.lenderLikelyAmount &&
+  t5Result45.bindingConstraint === 'foir' &&
+  t5Result30.bindingConstraint === 'ltv'
+);
+
+// Questionnaire flow integration test: Personal purpose with commercial property
+const personalWithCommercialAnswers: Answers = {
+  income_type: 'salaried',
+  monthly_income: foir24LIncome,
+  loan_purpose: 'personal_event',
+  collateral_available: 'property_commercial',
+  collateral_value: 3000000,
+  existing_emi: 0,
+};
+const pPersonalComm = buildProfileFromAnswers(personalWithCommercialAnswers);
+const outPersonalComm = runCopilot(pPersonalComm);
+assert(
+  'Questionnaire flow: Personal purpose with commercial property ₹30L binds at LTV ₹18L',
+  pPersonalComm.collateral.statedValue === 3000000 &&
+  outPersonalComm.lenderCapacity.ltvSupportedAmount === 1800000 &&
+  outPersonalComm.lenderCapacity.bindingConstraint === 'ltv' &&
+  outPersonalComm.lenderCapacity.lenderLikelyAmount <= 1800000
+);
+
 console.log('\n═══════════════════════════════════════════════════════════════');
 console.log(`HARDENING TEST SUITE SUMMARY: ${passCount} passed, ${failCount} failed`);
 console.log('═══════════════════════════════════════════════════════════════\n');

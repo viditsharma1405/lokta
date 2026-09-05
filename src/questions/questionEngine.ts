@@ -232,14 +232,14 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
   let loanTypeForSecured = 'personal_loan';
   if (loanPurpose === 'home_purchase') loanTypeForSecured = 'home_loan';
   else if (loanPurpose === 'vehicle') loanTypeForSecured = 'two_wheeler_loan';
-  else if (loanPurpose === 'business_expansion') {
-    if (hasCollateral && (collateralType === 'property_commercial' || collateralType === 'property_residential'))
-      loanTypeForSecured = collateralType === 'property_commercial' ? 'lap_commercial' : 'lap';
-    else if (hasCollateral && collateralType === 'gold')
-      loanTypeForSecured = 'gold_loan';
-    else loanTypeForSecured = 'business_loan';
+  else if (hasCollateral) {
+    if (collateralType === 'property_commercial') loanTypeForSecured = 'lap_commercial';
+    else if (collateralType === 'property_residential') loanTypeForSecured = 'lap';
+    else if (collateralType === 'gold') loanTypeForSecured = 'gold_loan';
+  } else if (loanPurpose === 'business_expansion') {
+    loanTypeForSecured = 'business_loan';
   } else {
-    // Non-business purposes preserve primary Personal Loan product
+    // Non-business purposes without collateral preserve primary Personal Loan product
     loanTypeForSecured = 'personal_loan';
   }
   const secured = isSecuredProduct(loanTypeForSecured);

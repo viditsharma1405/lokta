@@ -44,16 +44,18 @@ export function determineLoanTypeKey(profile: BorrowerProfile): string {
   const { loanPurpose, collateral } = profile;
   if (loanPurpose === 'home_purchase') return 'home_loan';
   if (loanPurpose === 'vehicle') return 'two_wheeler_loan';
+
+  const isPledged = collateral.willingToPledge !== 'no' && collateral.willingToPledge !== 'not_sure';
+  if (isPledged && collateral.type !== 'none' && (collateral.statedValue ?? 0) > 0) {
+    if (collateral.type === 'property_commercial') return 'lap_commercial';
+    if (collateral.type === 'property_residential') return 'lap';
+    if (collateral.type === 'gold') return 'gold_loan';
+  }
+
   if (loanPurpose === 'business_expansion') {
-    const isPledged = collateral.willingToPledge !== 'no' && collateral.willingToPledge !== 'not_sure';
-    if (isPledged && collateral.type !== 'none' && collateral.statedValue) {
-      if (collateral.type === 'property_commercial') return 'lap_commercial';
-      if (collateral.type === 'property_residential') return 'lap';
-      if (collateral.type === 'gold') return 'gold_loan';
-    }
     return 'business_loan';
   }
-  // Non-business purposes preserve primary Personal Loan product
+  // Non-business purposes without pledged collateral preserve primary Personal Loan product
   return 'personal_loan';
 }
 
@@ -89,7 +91,9 @@ export function computeLenderCapacity(
       // Borrower-reported collateral value × illustrative LTV (no arbitrary haircut)
       ltvSupportedAmount = profile.collateral.statedValue * ltv;
 
-      if (foirSupportedAmount <= ltvSupportedAmount) {
+      if (Math.abs(foirSupportedAmount - ltvSupportedAmount) < 1) {
+        bindingConstraint = 'both';
+      } else if (foirSupportedAmount < ltvSupportedAmount) {
         bindingConstraint = 'foir';
       } else {
         bindingConstraint = 'ltv';
@@ -185,6 +189,12 @@ export function computeLenderCapacity(
 
   const explanation = availableNewEMI <= 0
     ? 'Your existing obligations already consume the full amount a lender would allocate. No new lending headroom remains.'
+    : ltvSupportedAmount !== null
+    ? bindingConstraint === 'ltv'
+      ? `Estimated repayment capacity supports ₹${Math.round(foirSupportedAmount / 100000 * 10) / 10}L, but your collateral supports approximately ₹${Math.round(ltvSupportedAmount / 100000 * 10) / 10}L based on the illustrative LTV. We use the lower of the two.`
+      : bindingConstraint === 'foir'
+      ? `Your collateral could support approximately ₹${Math.round(ltvSupportedAmount / 100000 * 10) / 10}L based on the illustrative LTV, but estimated repayment capacity supports ₹${Math.round(foirSupportedAmount / 100000 * 10) / 10}L. We use the lower of the two.`
+      : `Both your collateral and estimated repayment capacity support approximately ₹${Math.round(lenderLikelyAmount / 100000 * 10) / 10}L.`
     : `A lender would allow up to ${(foir * 100).toFixed(0)}% of your lender-recognized income for all debt payments. After your existing obligations, there is ₹${Math.round(availableNewEMI).toLocaleString('en-IN')}/month available for a new loan — supporting a principal of approximately ₹${Math.round(lenderLikelyAmount / 100000 * 10) / 10}L.`;
 
   const docBreakdown = {
