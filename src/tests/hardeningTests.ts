@@ -19,7 +19,7 @@ import { runCopilot } from '../engine/index';
 import { computeEligibleIncomeLender } from '../engine/income';
 import { computeLenderCapacity } from '../engine/lenderCapacity';
 import { computeFairRate } from '../engine/fairRate';
-import { computeSIPComparison } from '../engine/emi';
+import { computeEMI, totalRepayment, totalInterest, computeSIPComparison } from '../engine/emi';
 import { buildProfileFromAnswers, type Answers } from '../questions/questionEngine';
 import {
   Q_BUSINESS_TENURE,
@@ -708,6 +708,79 @@ const res12 = runCopilot(PERSONA_PRIYA, 12);
 const res84 = runCopilot(PERSONA_PRIYA, 84);
 assert('Edge: Short tenure 12m produces positive finite principal', res12.safeCapacity.safeAmount > 0 && isFinite(res12.safeCapacity.safeAmount));
 assert('Edge: Long tenure 84m produces positive finite principal', res84.safeCapacity.safeAmount > 0 && isFinite(res84.safeCapacity.safeAmount));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// M. REQUESTED LOAN EMI VS SAFE EMI CEILING CLARITY & MATH REGRESSION
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n── M. Requested Loan EMI vs Safe EMI Ceiling Clarity & Math ──');
+
+// 1. Core regression example from spec: Principal = ₹7,00,000, Rate = 10%, Tenure = 36 months
+const testPrincipal = 700000;
+const testAnnualRate = 10;
+const testTenure = 36;
+
+const testEMI = computeEMI(testPrincipal, testAnnualRate, testTenure);
+const testRepayment = totalRepayment(testEMI, testTenure);
+const testInterest = totalInterest(testPrincipal, testEMI, testTenure);
+
+// Expected approximate EMI: ₹22,587/month
+assert(
+  'Clarity: Requested loan EMI for ₹7L at 10% for 36m is approx ₹22,587 (exact: 22587)',
+  Math.round(testEMI) === 22587
+);
+
+// Expected total repayment: ~₹8.13L (8,13,133)
+assert(
+  'Clarity: Requested loan total repayment is approx ₹8.13L (8,13,133)',
+  testRepayment > 812000 && testRepayment < 814000
+);
+
+// Expected interest: ~₹1.13L (1,13,133)
+assert(
+  'Clarity: Requested loan total interest is approx ₹1.13L (1,13,133)',
+  testInterest > 112000 && testInterest < 114000
+);
+
+// 2. Safe EMI ceiling ≠ requested loan EMI
+const sampleProfileWithSafeCeiling: BorrowerProfile = {
+  ...PERSONA_PRIYA,
+  requestedAmount: 700000,
+};
+const resSample = runCopilot(sampleProfileWithSafeCeiling, 36);
+
+// Safe EMI ceiling is derived from borrower cashflow (e.g. ₹24,000 for Priya)
+// It is NOT the EMI for the requested loan!
+assert(
+  'Clarity: Safe EMI ceiling is NOT equal to requested loan EMI',
+  resSample.safeCapacity.safeEMI !== testEMI
+);
+
+// 3. Mathematical correctness: safe EMI ceiling must NOT be used to calculate requested-loan interest
+const wrongInterestUsingSafeCeiling = resSample.safeCapacity.safeEMI * testTenure - testPrincipal;
+const correctInterest = totalInterest(testPrincipal, testEMI, testTenure);
+
+assert(
+  'Clarity: Safe EMI ceiling must NOT be used to calculate requested-loan interest',
+  correctInterest !== wrongInterestUsingSafeCeiling &&
+    Math.abs(correctInterest - 113133) < 50
+);
+
+// 4. Tenure change recalculates requested loan EMI while safe EMI ceiling remains fixed
+const emi12 = computeEMI(testPrincipal, testAnnualRate, 12);
+const emi48 = computeEMI(testPrincipal, testAnnualRate, 48);
+
+assert(
+  'Clarity: Changing tenure recalculates requested-loan EMI (12m > 36m > 48m)',
+  emi12 > testEMI && testEMI > emi48
+);
+
+const repay12 = totalRepayment(emi12, 12);
+const repay48 = totalRepayment(emi48, 48);
+
+assert(
+  'Clarity: Changing tenure recalculates requested-loan total repayment and interest',
+  repay48 > testRepayment && testRepayment > repay12
+);
 
 console.log('\n═══════════════════════════════════════════════════════════════');
 console.log(`HARDENING TEST SUITE SUMMARY: ${passCount} passed, ${failCount} failed`);

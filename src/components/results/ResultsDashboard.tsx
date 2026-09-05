@@ -2,10 +2,11 @@ import { useState, useMemo } from 'react';
 import type { BorrowerProfile } from '../../types/profile';
 import type { CopilotOutput, StressClassification } from '../../types/calculations';
 import { formatCurrency, formatEMI, formatRateBand, formatPercent, formatLakhs } from '../../utils/currency';
-import { computeEMI, computeLoanCostBreakdown, computeSIPComparison } from '../../engine/emi';
+import { computeEMI, totalRepayment, totalInterest, computeLoanCostBreakdown, computeSIPComparison } from '../../engine/emi';
 import { TENURE_DEFAULTS, TENURE_OPTIONS } from '../../rules/constants';
 import { determineLoanTypeKey, computeLenderCapacity } from '../../engine/lenderCapacity';
 import { computeSafeCapacity } from '../../engine/safeCapacity';
+import { computeEffectiveCostForProfile } from '../../engine/effectiveCost';
 import { runCopilot } from '../../engine/index';
 import {
   computeEligibleIncomeLender,
@@ -312,6 +313,30 @@ export default function ResultsDashboard({ profile, output: _output, personaName
       lenderCapacity: simLenderCapacity,
     };
   }, [updatedProfile, fairRate.fairRateHigh, fairRate.fairRateMid, simulatedTenure]);
+
+  // Calculations for the actual requested loan at fair-rate midpoint & simulated tenure
+  const requestedLoanCalculations = useMemo(() => {
+    const emi = computeEMI(requestedAmount, effectiveInterestRate, simulatedTenure);
+    const totalRepay = totalRepayment(emi, simulatedTenure);
+    const interest = totalInterest(requestedAmount, emi, simulatedTenure);
+    const isBelowCeiling = emi <= safeCapacity.safeEMI;
+    return {
+      emi,
+      totalRepay,
+      interest,
+      isBelowCeiling,
+    };
+  }, [requestedAmount, effectiveInterestRate, simulatedTenure, safeCapacity.safeEMI]);
+
+  // Effective cost evaluated specifically for the requested loan principal
+  const requestedEffectiveCost = useMemo(() => {
+    return computeEffectiveCostForProfile(
+      updatedProfile,
+      requestedAmount,
+      fairRate.fairRateHigh,
+      simulatedTenure
+    );
+  }, [updatedProfile, requestedAmount, fairRate.fairRateHigh, simulatedTenure]);
 
 
 
@@ -641,74 +666,184 @@ export default function ResultsDashboard({ profile, output: _output, personaName
             </span>
           </div>
 
-          {/* EMI Ceiling */}
-          <div className="bg-white rounded-xl border border-[#eae3d9] p-4 sm:p-5 shadow-xs">
-            <h3 className="text-sm font-bold text-[#18181b] mb-3 sm:mb-4">EMI Ceiling</h3>
-            <div className="grid grid-cols-3 gap-1.5 sm:gap-4 mb-3 sm:mb-4">
-              <div className="p-2 sm:p-0 bg-[#faf7f2] sm:bg-transparent rounded-lg sm:rounded-none">
-                <p className="text-[10px] sm:text-xs text-[#71717a] font-medium">Safe Ceiling</p>
-                <p className="text-sm sm:text-xl font-extrabold text-[#18181b] mt-0.5">{formatEMI(safeCapacity.safeEMI)}</p>
-                <p className="text-[10px] sm:text-xs text-red-600 font-medium leading-tight mt-0.5">Do not cross</p>
+          {/* ── Requested Loan vs. Safe EMI Ceiling ── */}
+          <div className="bg-white rounded-2xl border border-[#eae3d9] p-4 sm:p-5 shadow-xs space-y-5">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#eae3d9] pb-3">
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#5a2045] bg-[#faf4f8] px-2.5 py-1 rounded-md border border-[#e8d0e0] inline-block mb-1">
+                  Requested Loan vs. Safe Ceiling
+                </span>
+                <h3 className="text-base font-bold text-[#18181b]">Your Requested Loan &amp; Affordability</h3>
               </div>
-              <div className="p-2 sm:p-0 bg-[#f2f8f4] sm:bg-transparent rounded-lg sm:rounded-none">
-                <p className="text-[10px] sm:text-xs text-[#71717a] font-medium">Recommended</p>
-                <p className="text-sm sm:text-xl font-extrabold text-[#065f46] mt-0.5">{formatEMI(safeCapacity.recommendedEMI)}</p>
-                <p className="text-[10px] sm:text-xs text-[#71717a] leading-tight mt-0.5">= safe × 90%</p>
-              </div>
-              <div className="p-2 sm:p-0 bg-[#faf4f8] sm:bg-transparent rounded-lg sm:rounded-none">
-                <p className="text-[10px] sm:text-xs text-[#71717a] font-medium">Lender Max</p>
-                <p className="text-sm sm:text-xl font-extrabold text-[#5a2045] mt-0.5">{formatEMI(lenderCapacity.availableNewEMI)}</p>
-                <p className="text-[10px] sm:text-xs text-[#71717a] leading-tight mt-0.5">FOIR capacity</p>
+              <div className="text-xs text-[#71717a] bg-[#faf7f2] px-3 py-1.5 rounded-lg border border-[#eae3d9] self-start sm:self-auto">
+                Tenure: <strong className="text-[#18181b]">{simulatedTenure} months</strong> · Fair Rate: <strong className="text-[#5a2045]">{effectiveInterestRate.toFixed(1)}% p.a.</strong>
               </div>
             </div>
 
-            {/* Rule 4: Every Number Has a Why — One-sentence explanation */}
-            <div className="bg-[#faf7f2] rounded-xl p-3 sm:p-3.5 border border-[#eae3d9] mb-4 text-xs leading-relaxed">
+            {/* Section 1 & 4: Requested Loan Summary Card */}
+            <div className="bg-[#faf7f2] rounded-xl p-4 border border-[#eae3d9]">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <p className="text-xs text-[#71717a] font-medium">Your requested loan</p>
+                  <p className="text-2xl font-black text-[#18181b] mt-0.5">{formatCurrency(requestedAmount, true)}</p>
+                  <p className="text-[11px] text-[#71717a] mt-0.5">Principal amount requested</p>
+                </div>
+                <div>
+                  <p className="text-xs text-[#71717a] font-medium">Estimated EMI at {effectiveInterestRate.toFixed(1)}% for {simulatedTenure} months</p>
+                  <p className="text-2xl font-black text-[#5a2045] mt-0.5">{formatEMI(requestedLoanCalculations.emi)}/mo</p>
+                  <p className="text-[11px] text-[#71717a] mt-0.5">Actual monthly installment for this loan</p>
+                </div>
+                <div>
+                  <p className="text-xs text-[#71717a] font-medium">Total repayment for your requested loan</p>
+                  <p className="text-2xl font-black text-[#18181b] mt-0.5">{formatCurrency(requestedLoanCalculations.totalRepay, true)}</p>
+                  <p className="text-[11px] text-[#71717a] mt-0.5">
+                    Estimated interest: ~{formatCurrency(requestedLoanCalculations.interest, true)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Section 7: Simple Visual Comparison */}
+              <div className={`mt-3.5 pt-3 border-t border-[#eae3d9] flex items-center justify-between flex-wrap gap-2 text-xs font-semibold rounded-lg px-3 py-2 ${
+                requestedLoanCalculations.isBelowCeiling
+                  ? 'bg-[#ecfdf5] border border-[#a7f3d0] text-[#065f46]'
+                  : 'bg-[#fffbeb] border border-[#fde68a] text-[#92400e]'
+              }`}>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">{requestedLoanCalculations.isBelowCeiling ? '✓' : '⚠'}</span>
+                  <span>
+                    {requestedLoanCalculations.isBelowCeiling
+                      ? `Your requested EMI (${formatEMI(requestedLoanCalculations.emi)}/mo) is below your estimated safe ceiling (${formatEMI(safeCapacity.safeEMI)}/mo).`
+                      : `Your requested EMI (${formatEMI(requestedLoanCalculations.emi)}/mo) is above your estimated safe ceiling (${formatEMI(safeCapacity.safeEMI)}/mo) by ${formatEMI(requestedLoanCalculations.emi - safeCapacity.safeEMI)}/mo.`}
+                  </span>
+                </div>
+                <div className="text-[11px] font-bold shrink-0 bg-white/70 px-2 py-0.5 rounded border border-current">
+                  Requested {formatEMI(requestedLoanCalculations.emi)} {requestedLoanCalculations.isBelowCeiling ? '<' : '>'} Ceiling {formatEMI(safeCapacity.safeEMI)}
+                </div>
+              </div>
+            </div>
+
+            {/* Section 3 & 8: Make the Three Numbers Distinct */}
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <h4 className="text-xs font-bold text-[#18181b] uppercase tracking-wider">
+                  The Four Monthly Numbers Compared
+                </h4>
+                <span className="text-[10px] text-[#71717a]">Distinct concepts — not interchangeable</span>
+              </div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+                {/* 1. Requested Loan EMI */}
+                <div className="bg-white rounded-xl border-2 border-[#e8d0e0] p-3 sm:p-3.5 shadow-xs">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[11px] font-bold text-[#5a2045]">Requested Loan EMI</p>
+                    <span className="text-[9px] bg-[#faf4f8] text-[#5a2045] font-bold px-1.5 py-0.5 rounded border border-[#e8d0e0]">Wanted</span>
+                  </div>
+                  <p className="text-base sm:text-xl font-extrabold text-[#5a2045]">{formatEMI(requestedLoanCalculations.emi)}/mo</p>
+                  <p className="text-[10px] text-[#71717a] mt-1 leading-tight">
+                    EMI for the {formatLakhs(requestedAmount)} loan you want (at {effectiveInterestRate.toFixed(1)}% over {simulatedTenure}m)
+                  </p>
+                </div>
+
+                {/* 2. Borrower-Safe EMI Ceiling */}
+                <div className="bg-[#f2f8f4] rounded-xl border-2 border-[#a7f3d0] p-3 sm:p-3.5 shadow-xs">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[11px] font-bold text-[#065f46]">Borrower-Safe Ceiling</p>
+                    <span className="text-[9px] bg-[#ecfdf5] text-[#065f46] font-bold px-1.5 py-0.5 rounded border border-[#a7f3d0]">Limit</span>
+                  </div>
+                  <p className="text-base sm:text-xl font-extrabold text-[#065f46]">{formatEMI(safeCapacity.safeEMI)}/mo</p>
+                  <p className="text-[10px] text-red-600 font-semibold mt-1 leading-tight">
+                    Maximum monthly EMI we consider prudent (Do not cross)
+                  </p>
+                </div>
+
+                {/* 3. Recommended EMI Ceiling */}
+                <div className="bg-white rounded-xl border border-[#eae3d9] p-3 sm:p-3.5 shadow-xs">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[11px] font-bold text-[#18181b]">Recommended Ceiling</p>
+                    <span className="text-[9px] bg-[#faf7f2] text-[#71717a] font-bold px-1.5 py-0.5 rounded border border-[#eae3d9]">90% Buffer</span>
+                  </div>
+                  <p className="text-base sm:text-xl font-extrabold text-[#18181b]">{formatEMI(safeCapacity.recommendedEMI)}/mo</p>
+                  <p className="text-[10px] text-[#71717a] mt-1 leading-tight">
+                    Safe ceiling × 90% presentation headroom to absorb shocks
+                  </p>
+                </div>
+
+                {/* 4. Lender Max EMI */}
+                <div className="bg-white rounded-xl border border-[#eae3d9] p-3 sm:p-3.5 shadow-xs">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[11px] font-bold text-[#71717a]">Lender Max EMI</p>
+                    <span className="text-[9px] bg-[#faf7f2] text-[#71717a] font-bold px-1.5 py-0.5 rounded border border-[#eae3d9]">FOIR Cap</span>
+                  </div>
+                  <p className="text-base sm:text-xl font-extrabold text-[#71717a]">{formatEMI(lenderCapacity.availableNewEMI)}/mo</p>
+                  <p className="text-[10px] text-[#71717a] mt-1 leading-tight">
+                    Lender-side FOIR formula capacity ignoring living costs
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 2: Explicit Explanation of Safe EMI Ceiling */}
+            <div className="bg-[#f4e7f0]/60 border border-[#e8d0e0] rounded-xl p-3 sm:p-3.5 text-xs text-[#5a2045] leading-relaxed">
+              <p className="font-bold mb-1 flex items-center gap-1.5 text-[#18181b]">
+                <span>ℹ️</span> Understanding Your Safe EMI Ceiling
+              </p>
               <p className="text-[#3f3f46]">
-                <strong className="text-[#18181b]">Why your safe ceiling is {formatEMI(safeCapacity.safeEMI)}/mo and not higher:</strong>{' '}
-                It reserves exactly {(safeCapacity.adjustedRetentionFactor * 100).toFixed(0)}% of your {formatCurrency(safeCapacity.disposableCashFlow, true)} disposable monthly surplus (after essentials &amp; existing debt) so you never risk default.
+                <strong>Safe EMI ceiling is the maximum monthly loan payment we estimate you can comfortably carry. It is NOT the EMI for your requested loan.</strong>
+              </p>
+              <p className="text-[#71717a] mt-1">
+                Why your safe ceiling is {formatEMI(safeCapacity.safeEMI)}/mo and not higher: It reserves exactly {(safeCapacity.adjustedRetentionFactor * 100).toFixed(0)}% of your {formatCurrency(safeCapacity.disposableCashFlow, true)} disposable monthly surplus (after essentials &amp; existing debt) so you never risk default.
               </p>
             </div>
 
-            {/* Tenure table */}
+            {/* Section 5 & 6: Clearly Labeled Tenure Simulator */}
             <div className="border-t border-[#eae3d9] pt-4">
-              <div className="flex justify-between items-center mb-3">
-                <p className="text-xs font-semibold text-[#71717a] uppercase tracking-wider">
-                  How tenure changes EMI (at {effectiveInterestRate.toFixed(1)}% fair mid-rate)
-                </p>
-                <span className="text-[11px] text-[#71717a]">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 mb-2">
+                <div>
+                  <h4 className="text-xs font-bold text-[#18181b] uppercase tracking-wider">
+                    Tenure Simulator — Safe-Amount Scenario
+                  </h4>
+                  <p className="text-xs text-[#71717a]">
+                    Based on your calculated safe borrowing amount of <strong>{formatLakhs(safeCapacity.recommendedAmount)}</strong> (at {effectiveInterestRate.toFixed(1)}% fair mid-rate)
+                  </p>
+                </div>
+                <span className="text-[11px] text-[#5a2045] font-semibold bg-[#faf4f8] px-2 py-0.5 rounded border border-[#e8d0e0] self-start sm:self-auto">
                   Click tenure to simulate
                 </span>
               </div>
+              <p className="text-[11px] text-[#71717a] mb-3 leading-relaxed">
+                Note: The simulation tiles below show what you would pay if you borrow your <strong>calculated safe amount ({formatLakhs(safeCapacity.recommendedAmount)})</strong>, NOT your requested loan ({formatLakhs(requestedAmount)}). Clicking any tenure also updates your requested loan's EMI and total repayment above.
+              </p>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {tenureOpts.map(t => {
-                  const emi = computeEMI(safeCapacity.recommendedAmount, effectiveInterestRate, t);
-                  const total = emi * t;
+                  const simSafeEMI = computeEMI(safeCapacity.recommendedAmount, effectiveInterestRate, t);
+                  const simSafeTotal = simSafeEMI * t;
                   const isDefault = t === defaultTenure;
                   const isSimulated = t === simulatedTenure;
-                  const isAboveCeiling = emi > safeCapacity.safeEMI;
+                  const isAboveCeiling = simSafeEMI > safeCapacity.safeEMI;
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={t}
                       onClick={() => setSimulatedTenure(t)}
-                      className={`rounded-lg p-3 text-center border transition-all cursor-pointer ${
+                      className={`rounded-lg p-3 text-left border transition-all cursor-pointer ${
                         isSimulated ? 'border-[#5a2045] ring-2 ring-[#5a2045] bg-[#faf4f8]' :
                         isDefault ? 'border-[#e8d0e0] bg-[#faf7f2]' :
                         isAboveCeiling ? 'border-red-200 bg-red-50' :
                         'border-[#eae3d9] bg-white hover:border-[#5a2045]'
                       }`}
                     >
-                      <div className="flex justify-between items-center text-[10px] text-[#71717a] mb-0.5">
-                        <span>{t}mo</span>
-                        {isSimulated && <span className="text-[9px] bg-[#5a2045] text-white px-1 rounded font-bold">Active</span>}
+                      <div className="flex justify-between items-center text-[10px] text-[#71717a] mb-1">
+                        <span className="font-bold text-[#18181b]">{t} months</span>
+                        {isSimulated && <span className="text-[9px] bg-[#5a2045] text-white px-1.5 py-0.2 rounded font-bold">Active</span>}
                         {!isSimulated && isDefault && <span className="text-[9px] text-[#5a2045] font-semibold">Def</span>}
                       </div>
+                      <p className="text-[10px] text-[#71717a]">Safe-amount scenario:</p>
                       <p className={`text-sm font-bold ${isSimulated ? 'text-[#5a2045]' : isDefault ? 'text-[#5a2045]' : isAboveCeiling ? 'text-red-600' : 'text-[#18181b]'}`}>
-                        {formatEMI(emi)}
+                        {formatEMI(simSafeEMI)}/mo
                       </p>
-                      <p className="text-xs text-[#71717a]">Total {formatCurrency(total, true)}</p>
-                      {isAboveCeiling && <p className="text-xs text-red-600 font-medium">↑ ceiling</p>}
-                    </div>
+                      <p className="text-xs text-[#71717a] mt-0.5">Total repayment: {formatCurrency(simSafeTotal, true)}</p>
+                      {isAboveCeiling && <p className="text-xs text-red-600 font-medium mt-0.5">↑ exceeds safe ceiling</p>}
+                    </button>
                   );
                 })}
               </div>
@@ -753,16 +888,29 @@ export default function ResultsDashboard({ profile, output: _output, personaName
             </div>
 
             <div className="bg-white rounded-xl border border-[#eae3d9] p-4 shadow-xs">
-              <h3 className="text-sm font-bold text-[#18181b] mb-2">Effective Annualized Cost</h3>
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="text-sm font-bold text-[#18181b]">Effective Annualized Cost</h3>
+                <span className="text-[10px] text-[#5a2045] font-semibold bg-[#faf4f8] px-2 py-0.5 rounded border border-[#e8d0e0]">
+                  For your requested loan
+                </span>
+              </div>
               <p className="text-2xl font-extrabold text-[#18181b]">
-                {effectiveCost.effectiveAnnualizedCostRange
-                  ? `${formatPercent(effectiveCost.effectiveAnnualizedCostRange.low)}–${formatPercent(effectiveCost.effectiveAnnualizedCostRange.high)}`
-                  : formatPercent(effectiveCost.effectiveAnnualizedCost)}
+                {requestedEffectiveCost.effectiveAnnualizedCostRange
+                  ? `${formatPercent(requestedEffectiveCost.effectiveAnnualizedCostRange.low)}–${formatPercent(requestedEffectiveCost.effectiveAnnualizedCostRange.high)}`
+                  : formatPercent(requestedEffectiveCost.effectiveAnnualizedCost)}
               </p>
-              <p className="text-xs text-[#71717a] mt-1">Nominal: {formatPercent(effectiveCost.nominalRate)} + processing fee (~{effectiveCost.processingFeePct.toFixed(1)}%)</p>
+              <p className="text-xs text-[#71717a] mt-1">
+                Evaluated on your requested loan of <strong>{formatCurrency(requestedAmount, true)}</strong> ({simulatedTenure}m tenure)
+              </p>
+              <p className="text-xs text-[#71717a]">
+                Nominal: {formatPercent(requestedEffectiveCost.nominalRate)} + processing fee (~{requestedEffectiveCost.processingFeePct.toFixed(1)}%)
+              </p>
+              <div className="mt-2 text-[11px] text-[#71717a] bg-[#faf7f2] p-2 rounded border border-[#eae3d9] leading-tight">
+                <strong>Estimated Effective Annualized Borrowing Cost</strong> — NOT regulatory APR.
+              </div>
               <Expandable title="What's included / excluded">
-                {effectiveCost.includedItems.map((it, i) => <p key={i}>✓ {it}</p>)}
-                {effectiveCost.excludedItems.map((it, i) => <p key={i} className="text-[#71717a]">✕ {it}</p>)}
+                {requestedEffectiveCost.includedItems.map((it, i) => <p key={i}>✓ {it}</p>)}
+                {requestedEffectiveCost.excludedItems.map((it, i) => <p key={i} className="text-[#71717a]">✕ {it}</p>)}
               </Expandable>
             </div>
           </div>
@@ -840,7 +988,7 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                   <span className="w-4 h-4 bg-red-100 text-red-700 rounded-full flex items-center justify-center text-xs font-bold border border-red-200">✕</span>
                   <span className="text-xs font-bold text-red-800 uppercase tracking-wide">Path A: Take the Loan</span>
                 </div>
-                <p className="text-xs text-[#71717a] mb-0.5">Monthly outflow for {simulatedTenure} mo:</p>
+                <p className="text-xs text-[#71717a] mb-0.5">Monthly loan payment ({formatLakhs(sipPrincipal)} at {simulatedTenure} mo):</p>
                 <p className="text-lg font-bold text-red-600 mb-3">{formatEMI(sipComparison.monthlyInvestment)}/mo</p>
                 <div className="space-y-1.5 text-xs border-t border-red-100 pt-2 text-[#52525b]">
                   <div className="flex justify-between">

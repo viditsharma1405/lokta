@@ -158,8 +158,8 @@ export default function NegotiationCardView({ profile, output, personaName, onBa
             </p>
           </div>
           <div>
-            <p className="text-[11px] sm:text-xs text-[#71717a]">EMI Ceiling</p>
-            <p className="text-sm sm:text-base font-bold text-[#18181b] mt-0.5">{formatEMI(safeCapacity.safeEMI)}</p>
+            <p className="text-[11px] sm:text-xs text-[#71717a]">Borrower-Safe Ceiling</p>
+            <p className="text-sm sm:text-base font-bold text-[#065f46] mt-0.5">{formatEMI(safeCapacity.safeEMI)}</p>
           </div>
           <div>
             <p className="text-[11px] sm:text-xs text-[#71717a]">Stress Result</p>
