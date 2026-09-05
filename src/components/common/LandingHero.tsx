@@ -35,9 +35,6 @@ export default function LandingHero({ onStart, onLoadPersona }: LandingHeroProps
             Start Self-Assessment →
           </button>
         </div>
-        <p className="text-xs text-[#71717a] px-2">
-          ⚡ Quick borrower assessment · A few core questions + only the follow-ups that matter · Works offline
-        </p>
       </div>
 
       {/* Cardless Editorial Flow: 5 Key Deliverables */}
