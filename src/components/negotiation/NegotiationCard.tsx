@@ -152,7 +152,7 @@ export default function NegotiationCardView({ profile, output, personaName, onBa
         {/* Rate & Cost */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4 mb-5 sm:mb-6 bg-[#faf7f2] border border-[#eae3d9] rounded-xl p-3 sm:p-4">
           <div>
-            <p className="text-[11px] sm:text-xs text-[#71717a]">Fair Rate Band</p>
+            <p className="text-[11px] sm:text-xs text-[#71717a]">Estimated Fair Rate Range</p>
             <p className="text-sm sm:text-base font-bold text-[#5a2045] mt-0.5">{formatRateBand(fairRate.fairRateLow, fairRate.fairRateHigh)}</p>
           </div>
           <div>

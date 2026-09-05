@@ -119,6 +119,11 @@ export interface ProductRouteResult {
   rationale: string;
   tradeoffs: string[];
   securityWarning?: string;
+  securedAlternative?: {
+    product: string;
+    description: string;
+    rateAdvantage?: string;
+  };
 }
 
 export type ProvenanceTag = 'FACT' | 'USER_ANSWER' | 'ASSUMPTION' | 'DERIVED';

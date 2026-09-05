@@ -492,55 +492,32 @@ export const INFORMAL_QUESTIONS: QuestionDef[] = [
 
 export const Q_COLLATERAL_AVAILABLE: QuestionDef = {
   id: 'collateral_available',
-  label: 'Do you have collateral you could potentially use for a secured loan?',
-  helpText: 'Pledging commercial or residential property or gold allows Loan Against Property (LAP) or Gold Loan with longer tenures and lower interest rates.',
-  whyWeAsk: 'Unsecured business loans cost 17%–28%. LAP or Gold loans cost 9.5%–15% and support much higher borrowing amounts.',
+  label: 'Would you be willing to pledge an asset as collateral for this loan?',
+  helpText: 'Pledging commercial/residential property or gold allows secured financing with lower interest rates and higher borrowing capacity.',
+  whyWeAsk: 'Pledging collateral enables lower secured rates and higher loan limits via LTV rules. We only evaluate secured options if you are open to pledging.',
   type: 'select',
   options: [
-    { value: 'property_commercial', label: 'Yes — Commercial property (Shop, office, warehouse)' },
-    { value: 'property_residential', label: 'Yes — Residential house / flat' },
-    { value: 'gold', label: 'Yes — Gold jewellery / ornaments' },
-    { value: 'none', label: 'No collateral — seeking an unsecured loan only' },
-  ],
-  allowUnknown: true,
-  unknownLabel: "I don't know if my assets qualify",
-  condition: answers =>
-    answers.income_type === 'self_employed' &&
-    answers.loan_purpose === 'business_expansion',
-  affects: ['productRoute', 'lenderCapacity', 'fairRate'],
-  reason: 'Routes self-employed borrowers to LAP/Gold loan products, enabling LTV evaluation and 60% secured FOIR.',
-  group: 'loan',
-};
-
-export const Q_GOLD_COLLATERAL: QuestionDef = {
-  id: 'gold_collateral',
-  label: 'Would you be willing to pledge your gold for this loan?',
-  helpText: 'Pledging gold provides fast access to secured Gold Loans with lower interest rates (9%–16%) than unsecured personal loans (11%–26%).',
-  whyWeAsk: 'Gold loans are available across salaried, self-employed, and informal borrowers. We only recommend a Gold Loan if you are open to pledging your ornaments.',
-  type: 'select',
-  options: [
-    { value: 'yes', label: "Yes — I'm open to a Gold Loan" },
-    { value: 'no', label: 'No — I want an unsecured loan' },
+    { value: 'none', label: 'No' },
+    { value: 'gold', label: 'Gold' },
+    { value: 'property_residential', label: 'Residential property' },
+    { value: 'property_commercial', label: 'Commercial property' },
     { value: 'not_sure', label: 'Not sure' },
   ],
   allowUnknown: false,
-  condition: answers =>
-    answers.loan_purpose === 'personal_event' ||
-    answers.loan_purpose === 'medical' ||
-    answers.loan_purpose === 'other' ||
-    answers.loan_purpose === 'education' ||
-    answers.loan_purpose === 'home_renovation' ||
-    (answers.loan_purpose === 'business_expansion' && answers.collateral_available === 'gold'),
+  condition: answers => answers.loan_purpose !== 'home_purchase',
   affects: ['productRoute', 'lenderCapacity', 'fairRate'],
-  reason: 'Determines willingness to pledge gold; routes to Gold Loan only if willing.',
+  reason: 'Determines whether secured products (LAP / Gold Loan) can be evaluated as primary or alternative routes.',
   group: 'loan',
 };
 
+// Backward-compatible alias for existing imports
+export const Q_GOLD_COLLATERAL: QuestionDef = Q_COLLATERAL_AVAILABLE;
+
 export const Q_COLLATERAL_VALUE: QuestionDef = {
   id: 'collateral_value',
-  label: 'What is the approximate market value of your collateral property/gold?',
-  helpText: 'Conservative estimate. Lenders apply an initial 20% haircut and an LTV ceiling (e.g. 65% for commercial, 75% for residential/gold).',
-  whyWeAsk: 'LTV-supported principal is calculated as: Collateral Value × (1 − 20% Haircut) × LTV.',
+  label: 'What is the estimated market value of your collateral asset?',
+  helpText: 'Self-reported estimate — property/gold valuation is unverified. Lenders apply an initial 20% haircut and regulatory LTV limits before sanction.',
+  whyWeAsk: 'Estimated Collateral Value × (1 − 20% Haircut) × LTV sets the maximum secured borrowing ceiling.',
   type: 'currency',
   placeholder: '45,00,000',
   prefix: '₹',
@@ -551,12 +528,12 @@ export const Q_COLLATERAL_VALUE: QuestionDef = {
     return (
       col === 'property_commercial' ||
       col === 'property_residential' ||
-      (col === 'gold' && answers.gold_collateral === 'yes') ||
+      col === 'gold' ||
       answers.gold_collateral === 'yes'
     );
   },
   affects: ['lenderCapacity'],
-  reason: 'Collateral value × (1 − haircut) × LTV sets the LTV-supported borrowing ceiling.',
+  reason: 'Estimated Collateral value × (1 − haircut) × LTV sets the LTV-supported borrowing ceiling.',
   group: 'loan',
 };
 

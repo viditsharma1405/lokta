@@ -109,42 +109,42 @@ export const FAIR_RATE_STARTING_POSITION = 50;
 // Base half-width (even with full information)
 export const FAIR_RATE_BASE_HALF_WIDTH = 15;
 
-// Additional widening per unknown material factor
-export const FAIR_RATE_WIDENING_PER_UNKNOWN = 10;
+// Additional widening per unknown material factor: 15 + (5 × unknownCount), capped at 25
+export const FAIR_RATE_WIDENING_PER_UNKNOWN = 5;
 
-// Cap so finalPosition ± halfWidth stays within total span ≤ 100
-export const FAIR_RATE_MAX_HALF_WIDTH = 50;
+// Cap so halfWidth stays ≤ 25 (0 unknowns → ±15, 1 unknown → ±20, 2+ unknowns → ±25)
+export const FAIR_RATE_MAX_HALF_WIDTH = 25;
 
 // ── Fair Rate Position Adjustments ───────────────────────────────────────────
 // Source: My judgement. Each factor scored exactly once.
 export const RATE_ADJ = {
   creditScore: {
-    gte750: -20,
-    range700_749: -10,
+    gte750: -15,
+    range700_749: -7,
     range650_699: 0,
-    range550_649: +15,
-    lt550: +30,
-    thinFile: +5,
-    unknown: 0,      // +1 unknown for widening
+    range550_649: +10,
+    lt550: +20,
+    thinFile: +3,
+    unknown: 0,      // +1 unknown for widening; midpoint unchanged
   },
   repaymentHistory: {
-    clean: -5,
-    bounce: +20,
-    unknown: 0,      // +1 unknown for widening
+    clean: -3,
+    bounce: +10,
+    unknown: 0,      // +1 unknown for widening; midpoint unchanged
   },
   stability: {
-    stable: -10,
-    moderate: -5,
-    unstable: +10,
-    unknown: 0,      // +1 unknown for widening
+    stable: -5,
+    moderate: -2,
+    unstable: +7,
+    unknown: 0,      // +1 unknown for widening; midpoint unchanged
   },
   documentation: {
-    full: -5,
+    full: -3,
     partial: 0,
-    none: +15,
-    unknown: +5,     // +1 unknown for widening
+    none: +8,
+    unknown: 0,      // +1 unknown for widening; midpoint unchanged
   },
-  highCostDebtPresent: +10,
+  highCostDebtPresent: +7,
 } as const;
 
 // ── Product Rate Bands ────────────────────────────────────────────────────────

@@ -79,7 +79,7 @@ const thinFile = runCopilot(baseSalaried({
   creditScore: null,
   creditScoreStatus: 'thin_file',
 }));
-assert('Thin file → +5 adjustment', thinFile.fairRate.adjustments.some(a => a.factor.includes('thin') && a.value === 5));
+assert('Thin file → +3 adjustment', thinFile.fairRate.adjustments.some(a => a.factor.includes('thin') && a.value === 3));
 
 // ── Unknown Household Expenses ───────────────────────────────────────────────
 const unknownExp = runCopilot(baseSalaried({
@@ -230,8 +230,8 @@ const adjClean = pRepayClean.adjustments.find(a => a.factor.includes('Clean repa
 const adjBounce = pRepayBounce.adjustments.find(a => a.factor.includes('Recent EMI bounce'))?.value;
 const adjUnknown = pRepayUnknown.adjustments.find(a => a.factor.includes('Repayment history unknown'))?.value;
 
-assert('Repayment history: clean gives -5 discount', adjClean === -5);
-assert('Repayment history: bounce gives +20 penalty', adjBounce === 20);
+assert('Repayment history: clean gives -3 discount', adjClean === -3);
+assert('Repayment history: bounce gives +10 penalty', adjBounce === 10);
 assert('Repayment history: unknown does NOT become clean (0 adjustment)', adjUnknown === 0);
 assert('Repayment history: unknown widens the band', pRepayUnknown.halfWidth > pRepayClean.halfWidth);
 

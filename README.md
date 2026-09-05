@@ -34,7 +34,7 @@ The tool deliberately optimizes for **borrower safety**, not maximum eligibility
 # Install dependencies
 npm install
 
-# Run complete verification test suite (Persona, Edge Case, Hardening — 321 tests)
+# Run complete verification test suite (Persona, Edge Case, Hardening — 351 tests)
 npm test
 
 # Lint codebase (oxlint)
@@ -85,7 +85,7 @@ src/
 └── tests/
     ├── personaTests.ts   # 24 persona validation tests
     ├── edgeCaseTests.ts  # 153 edge case tests
-    └── hardeningTests.ts # 144 hardening & surgical regression tests
+    └── hardeningTests.ts # 174 hardening & surgical regression tests
 ```
 
 ### Design Principles

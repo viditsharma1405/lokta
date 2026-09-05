@@ -846,60 +846,7 @@ export default function ResultsDashboard({ profile, output: _output, personaName
               </p>
             </div>
 
-            {/* Clearly Labeled Tenure Simulator */}
-            <div className="border-t border-[#eae3d9] pt-4">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 mb-2">
-                <div>
-                  <h4 className="text-xs font-bold text-[#18181b] uppercase tracking-wider">
-                    Tenure Simulator — Safe-Amount Scenario
-                  </h4>
-                  <p className="text-xs text-[#71717a]">
-                    Simulating your Borrower-Safe ceiling principal: <strong>{formatLakhs(safeCapacity.safeAmount)}</strong> (at {effectiveInterestRate.toFixed(1)}% fair mid-rate)
-                  </p>
-                </div>
-                <span className="text-[11px] text-[#5a2045] font-semibold bg-[#faf4f8] px-2 py-0.5 rounded border border-[#e8d0e0] self-start sm:self-auto">
-                  Click tenure to simulate
-                </span>
-              </div>
-              <p className="text-[11px] text-[#71717a] mb-3 leading-relaxed">
-                Note: The simulation tiles below show what you would pay if you borrow your <strong>Borrower-Safe ceiling ({formatLakhs(safeCapacity.safeAmount)})</strong>, NOT your requested loan ({formatLakhs(requestedAmount)}). Clicking any tenure also updates your requested loan's EMI, total repayment, and effective cost above.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-                {tenureOpts.map(t => {
-                  const simSafeEMI = computeEMI(safeCapacity.safeAmount, effectiveInterestRate, t);
-                  const simSafeTotal = totalRepayment(simSafeEMI, t);
-                  const isDefault = t === defaultTenure;
-                  const isSimulated = t === simulatedTenure;
-                  const isAboveCeiling = simSafeEMI > safeCapacity.safeEMI;
-                  return (
-                    <button
-                      type="button"
-                      key={t}
-                      onClick={() => setSimulatedTenure(t)}
-                      className={`rounded-xl p-3 text-left border transition-all cursor-pointer overflow-hidden ${
-                        isSimulated ? 'border-[#5a2045] ring-2 ring-[#5a2045] bg-[#faf4f8]' :
-                        isDefault ? 'border-[#e8d0e0] bg-[#faf7f2]' :
-                        isAboveCeiling ? 'border-red-200 bg-red-50' :
-                        'border-[#eae3d9] bg-white hover:border-[#5a2045]'
-                      }`}
-                    >
-                      <div className="flex justify-between items-center text-[10px] text-[#71717a] mb-1">
-                        <span className="font-bold text-[#18181b]">Safe-amount scenario — {t} months</span>
-                        {isSimulated && <span className="text-[9px] bg-[#5a2045] text-white px-1.5 py-0.2 rounded font-bold">Active</span>}
-                        {!isSimulated && isDefault && <span className="text-[9px] text-[#5a2045] font-semibold">Default</span>}
-                      </div>
-                      <p className={`text-sm sm:text-base font-bold tracking-tight truncate ${isSimulated ? 'text-[#5a2045]' : isDefault ? 'text-[#5a2045]' : isAboveCeiling ? 'text-red-600' : 'text-[#18181b]'}`}>
-                        Estimated EMI: {formatEMI(simSafeEMI)}
-                      </p>
-                      <p className="text-xs text-[#71717a] mt-1 leading-snug">
-                        Total repayment for safe-amount scenario: <strong>{formatCurrency(simSafeTotal, true)}</strong>
-                      </p>
-                      {isAboveCeiling && <p className="text-[11px] text-red-600 font-medium mt-0.5">↑ exceeds safe ceiling</p>}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+
           </div>
 
 
@@ -908,33 +855,51 @@ export default function ResultsDashboard({ profile, output: _output, personaName
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="bg-white rounded-xl border border-[#eae3d9] p-4 shadow-xs">
               <div className="flex justify-between items-center mb-2">
-                <h3 className="text-sm font-bold text-[#18181b]">Fair Rate Band</h3>
+                <h3 className="text-sm font-bold text-[#18181b]">Estimated Fair Rate Range</h3>
                 <ConfidenceDot level={fairRate.confidence} />
               </div>
               <p className="text-2xl font-extrabold text-[#5a2045]">{formatRateBand(fairRate.fairRateLow, fairRate.fairRateHigh)}</p>
-              <p className="text-xs text-[#71717a] mt-1">{productRoute.recommendedRoute} • base {fairRate.baseBandLow}%–{fairRate.baseBandHigh}%</p>
-              <Expandable title="Rate position breakdown">
-                <p>Start: {fairRate.startingPosition}/100</p>
+              <p className="text-xs text-[#71717a] mt-1">{productRoute.recommendedRoute} • benchmark base {fairRate.baseBandLow}%–{fairRate.baseBandHigh}%</p>
+
+              {/* Drivers & Why */}
+              <div className="mt-3 pt-3 border-t border-[#f4efe8]">
+                <p className="text-xs font-semibold text-[#18181b] mb-1.5">Why:</p>
+                <div className="space-y-1">
+                  {fairRate.adjustments
+                    .filter(a => a.value !== 0)
+                    .map((a, i) => (
+                      <div key={i} className="flex items-start gap-1.5 text-xs text-[#3f3f46]">
+                        <span className={a.value < 0 ? 'text-[#065f46] font-bold' : 'text-[#b45309] font-bold'}>
+                          {a.value < 0 ? '✓' : '•'}
+                        </span>
+                        <span>{a.factor} ({a.value > 0 ? `+${a.value}` : a.value} pts)</span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+
+              <Expandable title="Detailed position mechanics">
+                <p>Starting position: {fairRate.startingPosition}/100 (neutral midpoint)</p>
                 {fairRate.adjustments.map((a, i) => (
-                  <p key={i}>• {a.factor}: {a.value > 0 ? '+' : ''}{a.value} pts</p>
+                  <p key={i}>• {a.factor}: {a.value > 0 ? '+' : ''}{a.value} pts ({a.reason})</p>
                 ))}
-                <p>Final: {fairRate.finalPosition.toFixed(0)}/100 ± {fairRate.halfWidth}</p>
+                <p>Final clamped position: {fairRate.finalPosition.toFixed(0)}/100 ± {fairRate.halfWidth} pts</p>
               </Expandable>
 
-              {/* Rule 2 & 3: Consequence of Unknowns & Widening with Silence */}
+              {/* Unknown Information Handling (Widening Without Midpoint Penalty) */}
               {fairRate.unknownCount > 0 && (
                 <div className="mt-3 bg-[#fffbeb] border border-[#fde68a] rounded-lg p-2.5 text-xs text-[#92400e]">
                   <p className="font-semibold flex items-center gap-1 text-[11px]">
-                    <span>ℹ️</span> Confidence widens with silence
+                    <span>ℹ️</span> Rate range widened for unknown information
                   </p>
                   <p className="mt-0.5 text-[11px] leading-relaxed">
-                    With {fairRate.unknownCount} factor{fairRate.unknownCount > 1 ? 's' : ''} unknown, your rate band is widened by ±{(fairRate.unknownCount * 1.5).toFixed(1)}% to reflect real uncertainty rather than false precision.
+                    Your rate range is wider because some lender-relevant information is unknown ({fairRate.unknownCount} factor{fairRate.unknownCount > 1 ? 's' : ''}, ±{fairRate.halfWidth} pts). Missing data does NOT increase your baseline rate midpoint.
                   </p>
-                    {profile.creditScoreStatus === 'unknown' && (
-                      <p className="mt-1 text-[11px] leading-relaxed text-[#78350f]">
-                        • <strong>Credit score unknown:</strong> Not penalized as 300; benchmarked against NBFC tier ({fairRate.baseBandLow}%–{fairRate.baseBandHigh}%) with widened band. A documented score ≥700 could unlock bank-tier rates.
-                      </p>
-                    )}
+                  {profile.creditScoreStatus === 'unknown' && (
+                    <p className="mt-1 text-[11px] leading-relaxed text-[#78350f]">
+                      • <strong>Credit score unknown:</strong> Not penalized as a low score; positioned neutrally within the applicable band. A verified score ≥700 could unlock lower bank-tier rates.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -1166,16 +1131,33 @@ export default function ResultsDashboard({ profile, output: _output, personaName
             </div>
           )}
 
-          {/* Product Route */}
+          {/* Product Route & Collateral Alternatives */}
           <div className="bg-white rounded-xl border border-[#eae3d9] p-5 shadow-xs">
-            <h3 className="text-sm font-bold text-[#18181b] mb-2">Recommended Loan Product</h3>
-            <p className="text-base font-bold text-[#5a2045]">{productRoute.recommendedRoute}</p>
-            <p className="text-sm text-[#3f3f46] mt-1">{productRoute.rationale}</p>
+            <h3 className="text-sm font-bold text-[#18181b] mb-3">Product Routing & Alternatives</h3>
+
+            <div className="mb-3">
+              <span className="text-[11px] font-bold tracking-wider uppercase text-[#71717a]">Primary borrowing route:</span>
+              <p className="text-base font-bold text-[#5a2045] mt-0.5">{productRoute.recommendedRoute}</p>
+              <p className="text-sm text-[#3f3f46] mt-1">{productRoute.rationale}</p>
+            </div>
+
+            {productRoute.securedAlternative && (
+              <div className="p-3.5 bg-[#fbf9f5] border border-[#e6decb] rounded-lg mb-3">
+                <span className="text-[11px] font-bold text-[#854d0e] uppercase tracking-wider">Potential secured alternative:</span>
+                <p className="text-sm font-bold text-[#18181b] mt-0.5">{productRoute.securedAlternative.product}</p>
+                <p className="text-xs text-[#52525b] mt-1">{productRoute.securedAlternative.description}</p>
+                <p className="text-[11px] text-[#71717a] mt-2 italic">
+                  Note: Owning an eligible asset does not mean you should pledge it. A secured loan reduces interest rates, but your property or gold is pledged as collateral and at risk if payments are missed.
+                </p>
+              </div>
+            )}
+
             {productRoute.securityWarning && (
               <p className="text-xs text-red-600 mt-2 font-medium">⚠ {productRoute.securityWarning}</p>
             )}
             {productRoute.tradeoffs.length > 0 && (
               <div className="mt-3 space-y-1">
+                <span className="text-xs font-semibold text-[#52525b]">Key Tradeoffs:</span>
                 {productRoute.tradeoffs.map((t, i) => <p key={i} className="text-xs text-[#71717a]">• {t}</p>)}
               </div>
             )}

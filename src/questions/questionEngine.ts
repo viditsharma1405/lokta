@@ -185,10 +185,29 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
     claimedTotalIncome = documentedIncome;
   }
 
-  // Collateral & Gold Willingness
-  let collateralType = (str(answers.collateral_available) as CollateralType) || 'none';
-  let willingToPledge: 'yes' | 'no' | 'not_sure' | undefined = undefined;
+  // Collateral & Willingness
+  const colAns = str(answers.collateral_available);
+  let collateralType: CollateralType = 'none';
+  let willingToPledge: 'yes' | 'no' | 'not_sure' = 'no';
 
+  if (colAns === 'gold') {
+    collateralType = 'gold';
+    willingToPledge = 'yes';
+  } else if (colAns === 'property_residential') {
+    collateralType = 'property_residential';
+    willingToPledge = 'yes';
+  } else if (colAns === 'property_commercial') {
+    collateralType = 'property_commercial';
+    willingToPledge = 'yes';
+  } else if (colAns === 'not_sure') {
+    collateralType = 'none';
+    willingToPledge = 'not_sure';
+  } else {
+    collateralType = 'none';
+    willingToPledge = 'no';
+  }
+
+  // Backward compatibility with legacy gold_collateral answers
   if (answers.gold_collateral === 'yes') {
     collateralType = 'gold';
     willingToPledge = 'yes';
@@ -199,25 +218,29 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
     willingToPledge = 'not_sure';
     if (collateralType === 'gold') collateralType = 'none';
   }
-  const collateralValue = collateralType !== 'none' ? num(answers.collateral_value) : null;
+
+  const collateralValue = (collateralType !== 'none' && willingToPledge === 'yes')
+    ? num(answers.collateral_value)
+    : null;
 
   // Co-applicant: STRICTLY require explicit confirmation (Never assume spouse is co-applicant)
   const hasCo = str(answers.co_applicant) === 'yes';
   const coApplicantIncome = hasCo ? (num(answers.co_applicant_income) ?? 0) : 0;
 
   // Determine if secured product
-  const hasCollateral = collateralType !== 'none' && collateralValue !== null && collateralValue > 0;
+  const hasCollateral = collateralType !== 'none' && willingToPledge === 'yes' && collateralValue !== null && collateralValue > 0;
   let loanTypeForSecured = 'personal_loan';
   if (loanPurpose === 'home_purchase') loanTypeForSecured = 'home_loan';
   else if (loanPurpose === 'vehicle') loanTypeForSecured = 'two_wheeler_loan';
   else if (loanPurpose === 'business_expansion') {
     if (hasCollateral && (collateralType === 'property_commercial' || collateralType === 'property_residential'))
       loanTypeForSecured = collateralType === 'property_commercial' ? 'lap_commercial' : 'lap';
-    else if (hasCollateral && collateralType === 'gold' && willingToPledge === 'yes')
+    else if (hasCollateral && collateralType === 'gold')
       loanTypeForSecured = 'gold_loan';
     else loanTypeForSecured = 'business_loan';
-  } else if (collateralType === 'gold' && willingToPledge === 'yes') {
-    loanTypeForSecured = 'gold_loan';
+  } else {
+    // Non-business purposes preserve primary Personal Loan product
+    loanTypeForSecured = 'personal_loan';
   }
   const secured = isSecuredProduct(loanTypeForSecured);
 

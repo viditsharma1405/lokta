@@ -94,7 +94,7 @@ export const PERSONA_RAVI: BorrowerProfile = {
   },
 
   // Collateral — FACT (Lokta: shop ₹45L unencumbered, commercial)
-  collateral: { type: 'property_commercial', statedValue: 4500000 },
+  collateral: { type: 'property_commercial', statedValue: 4500000, willingToPledge: 'yes' },
 
   // Credit — thin file (no credit history) — FACT (Lokta)
   creditScore: null,

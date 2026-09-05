@@ -41,6 +41,7 @@ import {
   isQuestionActive,
 } from '../questions/questionDefs';
 import { PERSONA_PRIYA, PERSONA_RAVI, PERSONA_ANITA } from '../data/personas';
+import { LTV, COLLATERAL_HAIRCUT } from '../rules/constants';
 import type { BorrowerProfile } from '../types/profile';
 
 let passCount = 0;
@@ -77,8 +78,8 @@ assert(
   !isQuestionActive(Q_BUSINESS_TENURE, salariedAnswers)
 );
 assert(
-  'Branching: Salaried borrower does NOT see collateral question',
-  !isQuestionActive(Q_COLLATERAL_AVAILABLE, salariedAnswers)
+  'Branching: Salaried borrower sees generalized collateral question',
+  isQuestionActive(Q_COLLATERAL_AVAILABLE, salariedAnswers)
 );
 assert(
   'Branching: Salaried borrower does NOT see ITR question',
@@ -176,11 +177,11 @@ const vehicleAnswers: Answers = {
   loan_purpose: 'vehicle',
 };
 assert(
-  'Routing: Vehicle loan does NOT ask for property collateral',
-  !isQuestionActive(Q_COLLATERAL_AVAILABLE, vehicleAnswers)
+  'Routing: Vehicle loan asks generalized collateral question for potential secured alternatives',
+  isQuestionActive(Q_COLLATERAL_AVAILABLE, vehicleAnswers)
 );
 
-// Personal event purpose asks if gold is available
+// Personal event purpose asks if collateral is available
 const personalAnswers: Answers = {
   income_type: 'salaried',
   monthly_income: 60000,
@@ -191,7 +192,7 @@ assert(
   isQuestionActive(Q_GOLD_COLLATERAL, personalAnswers)
 );
 
-// Gold loan routing
+// Gold loan routing for personal purpose
 const profileWithGold = buildProfileFromAnswers({
   ...personalAnswers,
   gold_collateral: 'yes',
@@ -199,9 +200,9 @@ const profileWithGold = buildProfileFromAnswers({
 });
 const outputGold = runCopilot(profileWithGold);
 assert(
-  'Routing: Gold collateral routes personal purpose to Gold Loan',
-  outputGold.productRoute.recommendedRoute === 'Gold Loan' &&
-    outputGold.productRoute.isSecured === true
+  'Routing: Gold collateral for personal purpose keeps Personal Loan primary with Gold Loan alternative',
+  outputGold.productRoute.recommendedRoute === 'Personal Loan' &&
+    outputGold.productRoute.securedAlternative?.product === 'Gold Loan'
 );
 
 // Informal borrower does NOT see ITR by default
@@ -877,7 +878,12 @@ const personalWilling = buildProfileFromAnswers({
   gold_collateral: 'yes',
   collateral_value: 300000,
 });
-assert('Reg 16: Personal purpose + gold willing -> Gold Loan', computeProductRoute(personalWilling).recommendedRoute === 'Gold Loan');
+const routePersonalWilling = computeProductRoute(personalWilling);
+assert(
+  'Reg 16: Personal purpose + gold willing -> Personal Loan primary, Gold Loan secured alternative',
+  routePersonalWilling.recommendedRoute === 'Personal Loan' &&
+    routePersonalWilling.securedAlternative?.product === 'Gold Loan'
+);
 
 const personalNotSure = buildProfileFromAnswers({
   income_type: 'salaried',
@@ -911,6 +917,188 @@ const vehicleProfile = buildProfileFromAnswers({
   loan_purpose: 'vehicle',
 });
 assert('Reg 16: Vehicle purpose -> Two-Wheeler Loan', computeProductRoute(vehicleProfile).recommendedRoute === 'Two-Wheeler Loan');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// O. FINAL SURGICAL PASS: FAIR RATE & GENERALIZED COLLATERAL (CHANGES 1 & 2)
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n── O. Fair Rate & Collateral Comprehensive Verification ──');
+
+// ── Fair Rate Tests (1–14) ──
+// 1. Strong known borrower → lower part of band
+const strongProfile: BorrowerProfile = {
+  ...PERSONA_PRIYA,
+  creditScore: 800,
+  repaymentHistory: 'clean',
+  incomeStability: 'stable',
+  documentationStatus: 'full',
+  highCostDebtOutstanding: 0,
+};
+const strongFR = computeFairRate(strongProfile);
+assert('FairRate 1: Strong known borrower → lower part of band (finalPosition <= 30)', strongFR.finalPosition <= 30);
+
+// 2. Neutral borrower → around middle of band
+const neutralProfile: BorrowerProfile = {
+  ...PERSONA_PRIYA,
+  creditScore: 680,
+  repaymentHistory: 'unknown',
+  incomeStability: 'unknown',
+  documentationStatus: 'partial',
+  highCostDebtOutstanding: 0,
+};
+const neutralFR = computeFairRate(neutralProfile);
+assert('FairRate 2: Neutral borrower → around middle of band (position = 50)', neutralFR.finalPosition === 50);
+
+// 3. Recent bounce → rate increases
+const cleanRepayProfile: BorrowerProfile = { ...PERSONA_PRIYA, repaymentHistory: 'clean' };
+const bounceRepayProfile: BorrowerProfile = { ...PERSONA_PRIYA, repaymentHistory: 'bounce' };
+assert('FairRate 3: Recent bounce → rate increases', computeFairRate(bounceRepayProfile).fairRateMid > computeFairRate(cleanRepayProfile).fairRateMid);
+
+// 4. High-cost debt → rate increases
+const noHcdProfile: BorrowerProfile = { ...PERSONA_PRIYA, highCostDebtOutstanding: 0 };
+const withHcdProfile: BorrowerProfile = { ...PERSONA_PRIYA, highCostDebtOutstanding: 50000 };
+assert('FairRate 4: High-cost debt → rate increases', computeFairRate(withHcdProfile).fairRateMid > computeFairRate(noHcdProfile).fairRateMid);
+
+// 5. Unknown credit → midpoint unchanged, range wider
+const baseKnownCredit: BorrowerProfile = { ...PERSONA_PRIYA, creditScore: 680, creditScoreStatus: 'known' };
+const baseUnknownCredit: BorrowerProfile = { ...PERSONA_PRIYA, creditScore: null, creditScoreStatus: 'unknown' };
+const frKnownCredit = computeFairRate(baseKnownCredit);
+const frUnknownCredit = computeFairRate(baseUnknownCredit);
+assert('FairRate 5: Unknown credit → midpoint unchanged', Math.abs(frUnknownCredit.fairRateMid - frKnownCredit.fairRateMid) < 0.001);
+assert('FairRate 5: Unknown credit → range wider', (frUnknownCredit.fairRateHigh - frUnknownCredit.fairRateLow) > (frKnownCredit.fairRateHigh - frKnownCredit.fairRateLow));
+
+// 6. Unknown repayment → midpoint unchanged, range wider
+const baseNeutralRepay: BorrowerProfile = { ...PERSONA_PRIYA, repaymentHistory: 'clean' };
+const baseUnknownRepay: BorrowerProfile = { ...PERSONA_PRIYA, repaymentHistory: 'unknown' };
+const frNeutralRepay = computeFairRate(baseNeutralRepay);
+const frUnknownRepay = computeFairRate(baseUnknownRepay);
+assert('FairRate 6: Unknown repayment → range wider than clean baseline', (frUnknownRepay.fairRateHigh - frUnknownRepay.fairRateLow) > (frNeutralRepay.fairRateHigh - frNeutralRepay.fairRateLow));
+
+// 7. Unknown stability → midpoint unchanged, range wider
+const baseNeutralStability: BorrowerProfile = { ...PERSONA_PRIYA, incomeStability: 'stable' };
+const baseUnknownStability: BorrowerProfile = { ...PERSONA_PRIYA, incomeStability: 'unknown' };
+const frNeutralStab = computeFairRate(baseNeutralStability);
+const frUnknownStab = computeFairRate(baseUnknownStability);
+assert('FairRate 7: Unknown stability → range wider than stable baseline', (frUnknownStab.fairRateHigh - frUnknownStab.fairRateLow) > (frNeutralStab.fairRateHigh - frNeutralStab.fairRateLow));
+
+// 8. Unknown documentation → midpoint unchanged, range wider
+const basePartialDoc: BorrowerProfile = { ...PERSONA_PRIYA, documentationStatus: 'partial' };
+const baseUnknownDoc: BorrowerProfile = { ...PERSONA_PRIYA, documentationStatus: 'unknown' };
+const frPartialDoc = computeFairRate(basePartialDoc);
+const frUnknownDoc = computeFairRate(baseUnknownDoc);
+assert('FairRate 8: Unknown documentation → midpoint unchanged vs partial (0 pt base)', Math.abs(frUnknownDoc.fairRateMid - frPartialDoc.fairRateMid) < 0.001);
+assert('FairRate 8: Unknown documentation → range wider', (frUnknownDoc.fairRateHigh - frUnknownDoc.fairRateLow) > (frPartialDoc.fairRateHigh - frPartialDoc.fairRateLow));
+
+// 9. Multiple unknowns → width capped at ±25
+const allUnknownsProfile: BorrowerProfile = {
+  ...PERSONA_PRIYA,
+  creditScore: null,
+  creditScoreStatus: 'unknown',
+  repaymentHistory: 'unknown',
+  incomeStability: 'unknown',
+  documentationStatus: 'unknown',
+};
+const frAllUnknowns = computeFairRate(allUnknownsProfile);
+assert('FairRate 9: Multiple unknowns → width capped at ±25', frAllUnknowns.halfWidth === 25);
+
+// 10. Position clamped to 0–100
+const extremeRiskyProfile: BorrowerProfile = {
+  ...PERSONA_PRIYA,
+  creditScore: 400,
+  repaymentHistory: 'bounce',
+  incomeStability: 'unstable',
+  documentationStatus: 'none',
+  highCostDebtOutstanding: 100000,
+};
+const frExtreme = computeFairRate(extremeRiskyProfile);
+assert('FairRate 10: Position clamped to 0–100', frExtreme.finalPosition <= 100 && frExtreme.finalPosition >= 0);
+
+// 11. Rate never escapes product band
+assert('FairRate 11: Rate never escapes product band (low >= baseBandLow, high <= baseBandHigh)', frExtreme.fairRateLow >= frExtreme.baseBandLow && frExtreme.fairRateHigh <= frExtreme.baseBandHigh && strongFR.fairRateLow >= strongFR.baseBandLow && strongFR.fairRateHigh <= strongFR.baseBandHigh);
+
+// 12. Priya-like profile ≈ 10–11.5%
+const priyaOutputFR = runCopilot(PERSONA_PRIYA).fairRate;
+assert('FairRate 12: Priya-like profile ≈ 10–11.5% (fairRateMid ~11.44%, fairRateLow ~10.5%)', priyaOutputFR.fairRateLow >= 10.0 && priyaOutputFR.fairRateMid <= 11.6);
+
+// 13. Ravi-like secured profile ≈ 10.5–13.0%
+const raviOutputFR = runCopilot(PERSONA_RAVI).fairRate;
+assert('FairRate 13: Ravi-like secured profile ≈ 10.5–13.0%', raviOutputFR.fairRateLow >= 10.5 && raviOutputFR.fairRateHigh <= 13.0);
+
+// 14. Anita-like risky profile remains materially higher
+const anitaOutputFR = runCopilot(PERSONA_ANITA).fairRate;
+assert('FairRate 14: Anita-like risky profile remains materially higher (mid > 18%)', anitaOutputFR.fairRateMid > 18.0);
+
+// ── Collateral Tests (1–10) ──
+// 1. Residential property LTV: 70%
+assert('Collateral 1: Residential property LTV is 70%', LTV.lapResidential === 0.70);
+
+// 2. Commercial property LTV: 60%
+assert('Collateral 2: Commercial property LTV is 60%', LTV.lapCommercial === 0.60);
+
+// 3. Gold LTV tiered
+assert('Collateral 3: Gold LTV tiered (85%, 80%, 75%)', LTV.gold.upTo2L === 0.85 && LTV.gold.twoTo10L === 0.80 && LTV.gold.above10L === 0.75);
+
+// 4. Collateral valuation haircut: 20%
+assert('Collateral 4: Collateral valuation haircut is exactly 20%', COLLATERAL_HAIRCUT === 0.20);
+
+// 5. Missing collateral value: no fabricated LTV
+const bizMissingCollateralVal: BorrowerProfile = {
+  ...PERSONA_RAVI,
+  collateral: { type: 'property_commercial', statedValue: null, willingToPledge: 'yes' },
+};
+const capMissingVal = computeLenderCapacity(bizMissingCollateralVal, 11.5, 84);
+assert('Collateral 5: Missing collateral value → no fabricated LTV (ltvSupportedAmount is null)', capMissingVal.ltvSupportedAmount === null);
+
+// 6. Not sure collateral → no LTV capacity
+const bizNotSureCollateral: BorrowerProfile = {
+  ...PERSONA_RAVI,
+  collateral: { type: 'property_commercial', statedValue: 4500000, willingToPledge: 'not_sure' },
+};
+const capNotSure = computeLenderCapacity(bizNotSureCollateral, 11.5, 84);
+assert('Collateral 6: Not sure collateral → no LTV capacity', capNotSure.ltvSupportedAmount === null);
+
+// 7. Business + property → LAP
+const routeBizResProp = computeProductRoute({
+  ...PERSONA_RAVI,
+  collateral: { type: 'property_residential', statedValue: 3000000, willingToPledge: 'yes' },
+});
+assert('Collateral 7: Business + residential property → LAP', routeBizResProp.recommendedRoute === 'LAP (Residential Property)' && routeBizResProp.isSecured === true);
+
+const routeBizCommProp = computeProductRoute({
+  ...PERSONA_RAVI,
+  collateral: { type: 'property_commercial', statedValue: 4500000, willingToPledge: 'yes' },
+});
+assert('Collateral 7: Business + commercial property → LAP', routeBizCommProp.recommendedRoute === 'LAP (Commercial Property)' && routeBizCommProp.isSecured === true);
+
+// 8. Vehicle + property → Two-Wheeler remains primary; property is alternative
+const routeVehicleProp = computeProductRoute({
+  ...PERSONA_PRIYA,
+  loanPurpose: 'vehicle',
+  collateral: { type: 'property_residential', statedValue: 4000000, willingToPledge: 'yes' },
+});
+assert('Collateral 8: Vehicle + property → Two-Wheeler remains primary', routeVehicleProp.recommendedRoute === 'Two-Wheeler Loan');
+assert('Collateral 8: Vehicle + property → LAP is secured alternative', routeVehicleProp.securedAlternative?.product === 'Loan Against Property (LAP)');
+
+// 9. Vehicle + gold → Two-Wheeler remains primary; gold is alternative
+const routeVehicleGold = computeProductRoute({
+  ...PERSONA_PRIYA,
+  loanPurpose: 'vehicle',
+  collateral: { type: 'gold', statedValue: 200000, willingToPledge: 'yes' },
+});
+assert('Collateral 9: Vehicle + gold → Two-Wheeler remains primary', routeVehicleGold.recommendedRoute === 'Two-Wheeler Loan');
+assert('Collateral 9: Vehicle + gold → Gold Loan is secured alternative', routeVehicleGold.securedAlternative?.product === 'Gold Loan');
+
+// 10. No collateral → unsecured route
+const routeNoColBiz = computeProductRoute({
+  ...PERSONA_RAVI,
+  collateral: { type: 'none', statedValue: null, willingToPledge: 'no' },
+});
+assert('Collateral 10: No collateral business → Unsecured Business Loan', routeNoColBiz.recommendedRoute === 'Business Loan (Unsecured)' && routeNoColBiz.isSecured === false);
+
+const routeNoColPersonal = computeProductRoute({
+  ...PERSONA_PRIYA,
+  collateral: { type: 'none', statedValue: null, willingToPledge: 'no' },
+});
+assert('Collateral 10: No collateral personal → Unsecured Personal Loan', routeNoColPersonal.recommendedRoute === 'Personal Loan' && routeNoColPersonal.isSecured === false);
 
 console.log('\n═══════════════════════════════════════════════════════════════');
 console.log(`HARDENING TEST SUITE SUMMARY: ${passCount} passed, ${failCount} failed`);

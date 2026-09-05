@@ -77,8 +77,8 @@ test('Priya: safe EMI ceiling', priya.safeCapacity.safeEMI, 24000, 1);
 test('Priya: recommended EMI', priya.safeCapacity.recommendedEMI, 21600, 1);
 test('Priya: safe amount', priya.safeCapacity.safeAmount, 728000, 3);
 test('Priya: recommended amount', priya.safeCapacity.recommendedAmount, 655000, 3);
-testRange('Priya: fair rate low', priya.fairRate.fairRateLow, 9.5, 10.5);
-testRange('Priya: fair rate high', priya.fairRate.fairRateHigh, 11.0, 12.0);
+testRange('Priya: fair rate low', priya.fairRate.fairRateLow, 10.0, 11.0);
+testRange('Priya: fair rate high', priya.fairRate.fairRateHigh, 12.0, 12.5);
 testStr('Priya: verdict', priya.decision.verdict, 'BORROW_LESS');
 
 // ─────────────────────────────────────────────────────────────────────────────

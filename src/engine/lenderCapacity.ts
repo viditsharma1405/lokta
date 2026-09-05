@@ -40,17 +40,20 @@ function getLTV(
   return null;
 }
 
-function determineLoanTypeKey(profile: BorrowerProfile): string {
+export function determineLoanTypeKey(profile: BorrowerProfile): string {
   const { loanPurpose, collateral } = profile;
   if (loanPurpose === 'home_purchase') return 'home_loan';
   if (loanPurpose === 'vehicle') return 'two_wheeler_loan';
   if (loanPurpose === 'business_expansion') {
-    return collateral.type !== 'none' && collateral.statedValue
-      ? collateral.type === 'property_commercial' ? 'lap_commercial' : 'lap'
-      : 'business_loan';
+    const isPledged = collateral.willingToPledge !== 'no' && collateral.willingToPledge !== 'not_sure';
+    if (isPledged && collateral.type !== 'none' && collateral.statedValue) {
+      if (collateral.type === 'property_commercial') return 'lap_commercial';
+      if (collateral.type === 'property_residential') return 'lap';
+      if (collateral.type === 'gold') return 'gold_loan';
+    }
+    return 'business_loan';
   }
-  if (collateral.type === 'gold' && collateral.statedValue) return 'gold_loan';
-  if (collateral.type !== 'none' && collateral.statedValue) return 'lap';
+  // Non-business purposes preserve primary Personal Loan product
   return 'personal_loan';
 }
 
@@ -212,5 +215,3 @@ export function computeLenderCapacity(
     drivers,
   };
 }
-
-export { determineLoanTypeKey };

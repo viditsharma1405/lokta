@@ -168,26 +168,61 @@ lenderLikelyAmount = principalFromEMI(availableNewEMI, fairRateMid, tenure)
 
 ---
 
-## 6. LTV (Loan to Value)
+## 6. Collateral & LTV (Loan to Value)
 
-| Collateral | LTV | Source |
-|------------|-----|--------|
-| Gold ≤ ₹2L | 85% | External fact (RBI 2026) |
-| Gold ₹2L–₹10L | 80% | External fact (RBI 2026) |
-| Gold > ₹10L | 75% | External fact (RBI 2026) |
-| LAP (residential) | 70% | External fact (market research) |
-| LAP (commercial) | 60% | External fact (iServeFinancial) |
+### Collateral Types & Regulatory LTV Ratios
 
-All self-reported collateral values receive a **20% haircut** before LTV is applied.
+A borrower may have gold, residential property, commercial property, no collateral, or be unsure about pledging.
+
+| Collateral Asset Type | Applicable LTV Ceiling | Valuation Haircut | Source or My Judgement |
+|-----------------------|------------------------|-------------------|------------------------|
+| **Gold Jewellery / Ornaments (≤ ₹2L)** | 85% | 20% | External fact (RBI 2026 tiered) |
+| **Gold Jewellery / Ornaments (₹2L–₹10L)** | 80% | 20% | External fact (RBI 2026 tiered) |
+| **Gold Jewellery / Ornaments (> ₹10L)** | 75% | 20% | External fact (RBI 2026 tiered) |
+| **Residential Property (House / Flat)** | 70% | 20% | External fact (market research) |
+| **Commercial Property (Shop / Office / Warehouse)** | 60% | 20% | External fact (iServeFinancial conservative benchmark) |
+| **No Collateral** | N/A (Unsecured) | N/A | My judgement |
+| **Not Sure** | N/A (No LTV capacity applied) | N/A | My judgement |
+
+### Collateral Valuation Haircut & Calculation
+
+All self-reported collateral valuations receive an initial **20% haircut** before regulatory LTV limits are applied, acknowledging that borrower estimates are self-reported and unverified:
 
 ```
-adjustedCollateralValue = statedValue × (1 − 0.20)
-ltvSupportedAmount = adjustedCollateralValue × LTV
-lenderLikelyAmount = min(foirSupported, ltvSupported)
+eligibleCollateralValue = estimatedCollateralValue × (1 − 0.20)
+ltvSupportedAmount = eligibleCollateralValue × applicableLTV
 ```
 
-**Source** (haircut): My judgement.
-**Impact**: LTV can be the binding constraint — a lower collateral value or LTV ratio reduces the lender-likely amount.
+For secured lender capacity:
+```
+securedLenderAmount = min(foirSupportedAmount, ltvSupportedAmount)
+```
+
+**Source (Haircut)**: My judgement (self-reported values are unverified and subject to lender appraisal haircuts).
+
+### When LTV is Applicable
+- LTV capacity is ONLY computed and applied when:
+  1. A collateral type is explicitly selected (`property_residential`, `property_commercial`, or `gold`).
+  2. The borrower explicitly confirms willingness to pledge (`willingToPledge === 'yes'`).
+  3. An estimated collateral market value is provided (`statedValue !== null` and `> 0`).
+
+### Treatment of Unknown / Unsure Collateral
+- If the borrower selects "Not sure", no collateral type is locked in (`willingToPledge = 'not_sure'`).
+- Do NOT fabricate LTV capacity.
+- Lender capacity falls back to FOIR-only capacity.
+- Confidence is reduced to `MEDIUM` or `LOW` due to uncorroborated collateral inputs.
+
+### Separation Between Primary Product and Secured Alternatives
+- **Loan purpose dictates the primary borrowing route**:
+  - `home_purchase` → Home Loan (Secured by home)
+  - `vehicle` → Two-Wheeler Loan (Secured by vehicle hypothecation)
+  - `business_expansion` + property → LAP (Commercial or Residential Property)
+  - `business_expansion` + gold → Gold Loan (for business)
+  - `business_expansion` + no collateral / not sure → Business Loan (Unsecured)
+  - Non-business purposes (`personal_event`, `medical`, `education`, `other`) → Personal Loan (Unsecured)
+- **Collateral surfaces an optional secured alternative**:
+  - Pledging an asset is never assumed or forced merely because the borrower possesses it.
+  - If a personal-loan or vehicle-loan applicant indicates available collateral, the tool presents the secured option (Gold Loan or LAP) as an **alternative comparison**, highlighting lower interest rates against asset foreclosure risks.
 
 ---
 
@@ -238,50 +273,80 @@ recommendedAmount = principalFromEMI(recommendedEMI, fairRateCeiling, defaultTen
 
 > **Important Disclosure on Rate Data**: These market bands reflect observed Indian retail lending ranges as of **Q1 2026**. They are market benchmarks used for educational self-assessment and borrower negotiation, **not** guaranteed lender quotes. Actual quotes depend on individual lender underwriting, risk-based pricing matrices, and bureau checks.
 
-| Product | Bank Tier | NBFC Tier | Named Sources Checked | Date Checked | Classification & Sourcing Quality |
-|---------|-----------|-----------|-----------------------|--------------|-----------------------------------|
-| **Personal Loan** (Unsecured) | 10.0%–16.0% | 16.0%–30.0% | SBI (Xpress Credit ~10.9%), HDFC Bank (~10.75%–15%), Bajaj Finance (~13%–28%), Tata Capital | Q1 2026 | **Market observation** (High confidence; widely published benchmark rates across aggregators) |
-| **Home Loan** (Secured) | 8.5%–10.5% | 10.5%–14.0% | SBI Regular Home Loan (EBLR linked ~8.50%–9.65%), HDFC Bank (~8.70%–9.80%), LIC Housing Finance (~9.5%–10.9%) | Q1 2026 | **Market observation** (High confidence; RBI repo-rate linked transparent benchmarks) |
-| **Loan Against Property (LAP)** | 9.5%–15.0% | 15.0%–20.0% | SBI LAP (~9.85%–11.5%), ICICI Bank LAP (~10.25%–12.5%), Bajaj Finserv LAP (~11%–16%), Poonawalla Fincorp | Q1 2026 | **Market observation** (Medium confidence; depends heavily on collateral property type and title) |
-| **Gold Loan** (Secured) | 7.0%–12.0% | 12.0%–26.0% | State Bank of India (~8.65%–9.5%), Bank of Baroda (~8.85%), Muthoot Finance (~11.9%–24%), Manappuram (~12%–26%) | Q1 2026 | **Market observation** (Medium/High confidence; NBFC gold rates carry tiered schemes based on LTV) |
-| **Two-Wheeler Loan** | 9.0%–14.0% | 14.0%–22.0% | HDFC Bank Two-Wheeler (~9.9%–14.5%), TVS Credit (~14%–20%), Hero FinCorp (~15%–22%) | Q1 2026 | **Market observation** (Medium confidence; NBFC captive financiers dominate subvented dealership offers) |
-| **Business Loan** (Unsecured MSME) | 11.0%–17.0% | 17.0%–28.0% | HDFC Bank Business Growth Loan (~11.9%–16.5%), Axis Bank, Lendingkart (~18%–27%), Bajaj Finserv | Q1 2026 | **Market observation (Weakest-sourced)**; highly customized to GST turnover, vintage, and balance sheet quality |
+| What (Product Band) | Bank Tier | NBFC Tier | Why | Source or My Judgement |
+|---------------------|-----------|-----------|-----|------------------------|
+| **Personal Loan** (Unsecured) | 10.0%–16.0% | 16.0%–30.0% | Benchmark range for salaried & prime retail unsecured credit | Market observation (Q1 2026: SBI, HDFC, Bajaj Finance) |
+| **Home Loan** (Secured) | 8.5%–10.5% | 10.5%–14.0% | Long-term mortgage rates linked to RBI repo rate benchmarks | Market observation (Q1 2026: SBI, HDFC, LIC Housing) |
+| **Loan Against Property (LAP)** | 9.5%–15.0% | 15.0%–20.0% | Secured mortgage on residential/commercial property collateral | Market observation (Q1 2026: SBI, ICICI, Bajaj Finserv) |
+| **Gold Loan** (Secured) | 7.0%–12.0% | 12.0%–26.0% | Rapid disbursal secured loans backed by physical gold ornaments | Market observation (Q1 2026: SBI, BOB, Muthoot, Manappuram) |
+| **Two-Wheeler Loan** | 9.0%–14.0% | 14.0%–22.0% | Retail vehicle financing secured by vehicle hypothecation | Market observation (Q1 2026: HDFC Bank, TVS Credit, Hero FinCorp) |
+| **Business Loan** (Unsecured MSME) | 11.0%–17.0% | 17.0%–28.0% | Cash-flow-based underwriting for business working capital/expansion | Market observation (Q1 2026: HDFC, Axis, Lendingkart) |
 
-**Tier selection rule**:
-- **Bank tier**: Selected if credit score ≥ 700 OR (thin-file borrower + established tenure ≥3yr + unencumbered property/gold collateral).
-- **NBFC tier**: Selected otherwise (scores 650–699, subprime <650, or uncollateralized thin-file).
+### Tier Selection Logic (Bank vs. NBFC)
+
+- **Bank Tier**: Selected when `creditScore ≥ 700` OR (`creditScoreStatus === 'thin_file'` AND `businessTenure ≥ 3yr` AND unencumbered property/gold collateral with explicit pledge confirmation `willingToPledge === 'yes'`).
+- **NBFC Tier**: Selected otherwise. Insufficient or missing documentation alone does NOT classify a borrower into an ultra-high penalty rate; the borrower is positioned neutrally (50) within the NBFC band unless actual risk signals justify moving it upward.
 - **Classification**: *Product judgement* applied deterministically for conservative negotiation positioning.
 
-### Position Adjustments (0–100 scale, starting at 50)
+### Starting Position & Adjustments (0–100 Scale)
 
-| Factor | Value | Source |
-|--------|-------|--------|
-| Credit score ≥ 750 | −20 | My judgement |
-| Credit score 700–749 | −10 | My judgement |
-| Credit score 650–699 | 0 | My judgement |
-| Credit score 550–649 | +15 | My judgement |
-| Credit score < 550 | +30 | My judgement |
-| Thin file | +5 | My judgement |
-| Clean repayment | −5 | My judgement |
-| Recent bounce | +20 | My judgement |
-| Stable income | −10 | My judgement |
-| Moderate stability | −5 | My judgement |
-| Unstable income | +10 | My judgement |
-| Full documentation | −5 | My judgement |
-| No documentation | +15 | My judgement |
-| High-cost debt present | +10 | My judgement |
+The model begins at neutral midpoint: `position = 50`. Each material factor is evaluated and adjusted at most once:
 
-**Band width**: base ±15 + (10 × number of unknown material factors). Cap = 50.
+| What (Factor) | Value | Why | Source or My Judgement |
+|---------------|-------|-----|------------------------|
+| **Credit Score ≥ 750** | −15 pts | Prime bureau history warrants prime rate positioning | My judgement |
+| **Credit Score 700–749** | −7 pts | Good repayment track record warrants moderate rate discount | My judgement |
+| **Credit Score 650–699** | 0 pts | Average credit standing; baseline neutral positioning | My judgement |
+| **Credit Score 550–649** | +10 pts | Elevated bureau risk warrants moderate risk premium | My judgement |
+| **Credit Score < 550** | +20 pts | Subprime credit profile carries substantial lender risk premium | My judgement |
+| **Credit Score: Thin File** | +3 pts | Lack of formal history is minor uncertainty, not bad credit | My judgement |
+| **Credit Score: Unknown** | 0 pts | Missing score does NOT increase rate midpoint; widens band instead | My judgement |
+| **Repayment: Clean** | −3 pts | Verified history of on-time payments without bounces | My judgement |
+| **Repayment: Recent Bounce** | +10 pts | Direct distress signal of cash-flow stress or payment failure | My judgement |
+| **Repayment: Unknown** | 0 pts | Unknown history does NOT penalize midpoint; widens band instead | My judgement |
+| **Stability: Stable** | −5 pts | High income predictability (e.g. established employment / business) | My judgement |
+| **Stability: Moderate** | −2 pts | Minor earnings seasonality or variability | My judgement |
+| **Stability: Unstable** | +7 pts | Volatile cash flows increase lender default risk | My judgement |
+| **Stability: Unknown** | 0 pts | Missing stability does NOT penalize midpoint; widens band instead | My judgement |
+| **Documentation: Full** | −3 pts | Full ITR / audited financials / salary slips | My judgement |
+| **Documentation: Partial** | 0 pts | Bank statements or informal ledgers available | My judgement |
+| **Documentation: None** | +8 pts | Fully undocumented cash earnings increase underwriting risk | My judgement |
+| **Documentation: Unknown** | 0 pts | Missing documentation status does NOT penalize midpoint | My judgement |
+| **High-Cost Debt Present** | +7 pts | Active debt with APR ≥ 30% signals reliance on high-cost borrowing | My judgement |
 
-### Calculation
+*Important*: Each adjustment is applied at most once. No double-counting of distress across multiple fields.
+
+### Unknown Handling & Uncertainty Half-Width
+
+**Core Principle: Unknown ≠ Bad.**
+Missing information must NOT be treated as bad credit. Unknown inputs never push the midpoint upward. Instead, they widen the uncertainty half-width around the midpoint:
+
+- `unknownCount` = count of unknown inputs among (`creditScoreStatus`, `repaymentHistory`, `incomeStability`, `documentationStatus`).
+- `halfWidth = min(25, 15 + (5 × unknownCount))`
+
+| Unknown Factors Count | Half-Width (Position Points) | Interpretation |
+|-----------------------|------------------------------|----------------|
+| **0 Unknowns** | ±15 pts | High confidence; tight baseline uncertainty band |
+| **1 Unknown** | ±20 pts | Medium confidence; moderately widened range |
+| **2 Unknowns** | ±25 pts | Medium/Low confidence; widened range |
+| **3+ Unknowns** | ±25 pts (Capped) | Low confidence; range widened to maximum cap |
+
+### Rate Mapping Calculation
 
 ```
-finalPosition = clamp(50 + Σadjustments, 0, 100)
-fairRateLow = lowerRate + (finalPosition − halfWidth) / 100 × span
-fairRateHigh = lowerRate + (finalPosition + halfWidth) / 100 × span
+position = clamp(50 + Σadjustments, 0, 100)
+span = upperRate − lowerRate
+rate = lowerRate + (position / 100) × span
+
+fairRateMid = rate
+halfWidthRate = (halfWidth / 100) × span
+fairRateLow = max(lowerRate, fairRateMid − halfWidthRate)
+fairRateHigh = min(upperRate, fairRateMid + halfWidthRate)
 ```
 
-**Impact**: Fair rate determines both the rate band shown to the borrower AND the EMI→Principal conversion.
+The displayed rate range is guaranteed to never escape the underlying product band `[lowerRate, upperRate]`.
+
+**Impact**: Fair rate determines the negotiation range shown to the borrower, the rate for requested loan EMI, and the conservative ceiling rate for sizing safe principal capacity.
 
 ---
 

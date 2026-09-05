@@ -23,7 +23,6 @@ import {
   Q_INFORMAL_RECORDS,
   Q_INFORMAL_SUPPORTED_AMOUNT,
   Q_COLLATERAL_AVAILABLE,
-  Q_GOLD_COLLATERAL,
   Q_COLLATERAL_VALUE,
   Q_CO_APPLICANT,
   Q_CO_APPLICANT_INCOME,
@@ -253,6 +252,10 @@ export default function Questionnaire({ onComplete }: QuestionnaireProps) {
         } else if (val === 'records') {
           delete updated.documented_income_itr;
         }
+      } else if (id === 'collateral_available') {
+        if (val === 'none' || val === 'not_sure') {
+          delete updated.collateral_value;
+        }
       } else if (id === 'gold_collateral') {
         if (val !== 'yes') {
           delete updated.collateral_value;
@@ -294,28 +297,12 @@ export default function Questionnaire({ onComplete }: QuestionnaireProps) {
     list.push(Q_LOAN_PURPOSE);
     list.push(Q_REQUESTED_AMOUNT);
 
-    // Branch E: Business Expansion Collateral (Unlocks LAP/Gold routing)
-    if (
-      answers.income_type === 'self_employed' &&
-      answers.loan_purpose === 'business_expansion'
-    ) {
+    // Branch E: Collateral & Secured Options (Adaptively available for non-home purposes)
+    if (answers.loan_purpose && answers.loan_purpose !== 'home_purchase') {
       list.push(Q_COLLATERAL_AVAILABLE);
 
       const col = answers.collateral_available;
       if (col === 'property_commercial' || col === 'property_residential' || col === 'gold') {
-        list.push(Q_COLLATERAL_VALUE);
-      }
-    }
-
-    // Branch E2: Personal / Emergency Gold Collateral (Unlocks Gold Loan)
-    if (
-      answers.loan_purpose === 'personal_event' ||
-      answers.loan_purpose === 'medical' ||
-      answers.loan_purpose === 'other' ||
-      answers.loan_purpose === 'education'
-    ) {
-      list.push(Q_GOLD_COLLATERAL);
-      if (answers.gold_collateral === 'yes') {
         list.push(Q_COLLATERAL_VALUE);
       }
     }
@@ -326,7 +313,6 @@ export default function Questionnaire({ onComplete }: QuestionnaireProps) {
     answers.income_stability,
     answers.loan_purpose,
     answers.collateral_available,
-    answers.gold_collateral,
   ]);
 
   // ── Step 2 Questions: Cash Flow & Existing Debt ────────────────────────────
