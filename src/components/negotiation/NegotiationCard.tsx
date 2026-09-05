@@ -2,6 +2,7 @@ import type { BorrowerProfile } from '../../types/profile';
 import type { CopilotOutput } from '../../types/calculations';
 import { formatCurrency, formatEMI, formatRateBand, formatPercent, formatLakhs } from '../../utils/currency';
 import { computeLoanCostBreakdown, computeSIPComparison } from '../../engine/emi';
+import { computeEffectiveCostForProfile } from '../../engine/effectiveCost';
 import { TENURE_DEFAULTS } from '../../rules/constants';
 import { determineLoanTypeKey } from '../../engine/lenderCapacity';
 
@@ -13,17 +14,23 @@ interface NegotiationCardProps {
 }
 
 export default function NegotiationCardView({ profile, output, personaName, onBack }: NegotiationCardProps) {
-  const { lenderCapacity, safeCapacity, fairRate, effectiveCost, stress, decision, productRoute } = output;
+  const { lenderCapacity, safeCapacity, fairRate, stress, decision, productRoute } = output;
   const isDontBorrow = decision.verdict === 'DONT_BORROW';
 
   const loanTypeKey = determineLoanTypeKey(profile);
   const defaultTenure = TENURE_DEFAULTS[loanTypeKey] ?? 36;
   const recommendedPrincipal = safeCapacity.recommendedAmount > 0 ? safeCapacity.recommendedAmount : profile.requestedAmount;
+  const cardEffectiveCost = computeEffectiveCostForProfile(
+    profile,
+    recommendedPrincipal,
+    fairRate.fairRateMid,
+    defaultTenure
+  );
   const cardLoanCost = computeLoanCostBreakdown(
     recommendedPrincipal,
     fairRate.fairRateMid,
     defaultTenure,
-    effectiveCost.processingFeePct
+    cardEffectiveCost.processingFeePct
   );
   const cardSIP = computeSIPComparison(
     safeCapacity.recommendedEMI > 0 ? safeCapacity.recommendedEMI : cardLoanCost.monthlyEMI,
@@ -133,11 +140,11 @@ export default function NegotiationCardView({ profile, output, personaName, onBa
             <p className="text-base sm:text-lg font-bold text-[#18181b] mt-0.5">{formatLakhs(lenderCapacity.lenderLikelyAmount)}</p>
           </div>
           <div className="bg-[#faf7f2] rounded-xl p-2.5 sm:p-3 border border-[#eae3d9]">
-            <p className="text-[11px] sm:text-xs text-[#71717a] font-medium">Safe Ceiling</p>
+            <p className="text-[11px] sm:text-xs text-[#71717a] font-medium">Borrower-Safe Ceiling</p>
             <p className="text-base sm:text-lg font-bold text-[#065f46] mt-0.5">{formatLakhs(safeCapacity.safeAmount)}</p>
           </div>
           <div className="bg-[#faf7f2] rounded-xl p-2.5 sm:p-3 border border-[#eae3d9]">
-            <p className="text-[11px] sm:text-xs text-[#71717a] font-medium">Recommended</p>
+            <p className="text-[11px] sm:text-xs text-[#71717a] font-medium">Recommended Target</p>
             <p className="text-base sm:text-lg font-bold text-[#065f46] mt-0.5">{formatLakhs(safeCapacity.recommendedAmount)}</p>
           </div>
         </div>
@@ -151,9 +158,9 @@ export default function NegotiationCardView({ profile, output, personaName, onBa
           <div>
             <p className="text-[11px] sm:text-xs text-[#71717a]">Effective Cost</p>
             <p className="text-sm sm:text-base font-bold text-[#18181b] mt-0.5">
-              {effectiveCost.effectiveAnnualizedCostRange
-                ? `${formatPercent(effectiveCost.effectiveAnnualizedCostRange.low)}–${formatPercent(effectiveCost.effectiveAnnualizedCostRange.high)}`
-                : formatPercent(effectiveCost.effectiveAnnualizedCost)
+              {cardEffectiveCost.effectiveAnnualizedCostRange
+                ? `${formatPercent(cardEffectiveCost.effectiveAnnualizedCostRange.low)}–${formatPercent(cardEffectiveCost.effectiveAnnualizedCostRange.high)}`
+                : formatPercent(cardEffectiveCost.effectiveAnnualizedCost)
               }
             </p>
           </div>
@@ -171,15 +178,15 @@ export default function NegotiationCardView({ profile, output, personaName, onBa
         <div className="mb-5 sm:mb-6">
           <div className="bg-[#f2f8f4] rounded-xl p-3.5 sm:p-4 border border-[#cde5d6]">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[11px] sm:text-xs font-bold text-[#065f46] uppercase tracking-wide">Illustrative Opportunity-Cost Comparison (SIP)</span>
+              <span className="text-[11px] sm:text-xs font-bold text-[#065f46] uppercase tracking-wide">Illustrative SIP comparison (Optional)</span>
               <span className="text-xs font-semibold text-[#065f46]">{defaultTenure} mo</span>
             </div>
             <p className="text-lg sm:text-xl font-extrabold text-[#065f46]">{formatCurrency(cardSIP.futureValue, true)}</p>
             <p className="text-xs text-[#064e3b] mt-1 leading-relaxed">
-              At an assumed 12% annual return, investing {formatEMI(cardSIP.monthlyInvestment)} creates a {formatCurrency(cardSIP.futureValue, true)} portfolio (+{formatCurrency(cardSIP.wealthGain, true)} returns) instead of paying interest.
+              Illustrative modeled difference under these assumptions: At an assumed 12% annual return, investing {formatEMI(cardSIP.monthlyInvestment)} creates an estimated {formatCurrency(cardSIP.futureValue, true)} portfolio (+{formatCurrency(cardSIP.wealthGain, true)} returns) instead of paying loan interest.
             </p>
             <p className="text-[11px] text-[#065f46] font-semibold mt-1">
-              Not guaranteed; market returns can be lower or negative • Net wealth swing: {formatCurrency(cardSIP.netWealthDifference, true)} in your favour
+              Does not affect borrowing eligibility or loan limits • Not guaranteed; market returns can be lower or negative • Illustrative modeled difference: {formatCurrency(cardSIP.netWealthDifference, true)}
             </p>
           </div>
         </div>

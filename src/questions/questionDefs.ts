@@ -514,23 +514,25 @@ export const Q_COLLATERAL_AVAILABLE: QuestionDef = {
 
 export const Q_GOLD_COLLATERAL: QuestionDef = {
   id: 'gold_collateral',
-  label: 'Do you have gold jewellery or ornaments you could pledge as collateral?',
+  label: 'Would you be willing to pledge your gold for this loan?',
   helpText: 'Pledging gold provides fast access to secured Gold Loans with lower interest rates (9%–16%) than unsecured personal loans (11%–26%).',
-  whyWeAsk: 'Gold loans are available across salaried, self-employed, and informal borrowers for personal, medical, or family emergency needs.',
+  whyWeAsk: 'Gold loans are available across salaried, self-employed, and informal borrowers. We only recommend a Gold Loan if you are open to pledging your ornaments.',
   type: 'select',
   options: [
-    { value: 'yes', label: 'Yes — I have gold jewellery / ornaments' },
-    { value: 'no', label: 'No — seeking an unsecured loan' },
+    { value: 'yes', label: "Yes — I'm open to a Gold Loan" },
+    { value: 'no', label: 'No — I want an unsecured loan' },
+    { value: 'not_sure', label: 'Not sure' },
   ],
-  allowUnknown: true,
-  unknownLabel: 'Not sure / Prefer unsecured',
+  allowUnknown: false,
   condition: answers =>
     answers.loan_purpose === 'personal_event' ||
     answers.loan_purpose === 'medical' ||
     answers.loan_purpose === 'other' ||
-    answers.loan_purpose === 'education',
+    answers.loan_purpose === 'education' ||
+    answers.loan_purpose === 'home_renovation' ||
+    (answers.loan_purpose === 'business_expansion' && answers.collateral_available === 'gold'),
   affects: ['productRoute', 'lenderCapacity', 'fairRate'],
-  reason: 'Routes personal/emergency borrowing to lower-rate secured Gold Loans.',
+  reason: 'Determines willingness to pledge gold; routes to Gold Loan only if willing.',
   group: 'loan',
 };
 
@@ -549,7 +551,7 @@ export const Q_COLLATERAL_VALUE: QuestionDef = {
     return (
       col === 'property_commercial' ||
       col === 'property_residential' ||
-      col === 'gold' ||
+      (col === 'gold' && answers.gold_collateral === 'yes') ||
       answers.gold_collateral === 'yes'
     );
   },

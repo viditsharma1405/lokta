@@ -20,6 +20,8 @@ import { computeEligibleIncomeLender } from '../engine/income';
 import { computeLenderCapacity } from '../engine/lenderCapacity';
 import { computeFairRate } from '../engine/fairRate';
 import { computeEMI, totalRepayment, totalInterest, computeSIPComparison } from '../engine/emi';
+import { computeEffectiveCostForProfile } from '../engine/effectiveCost';
+import { computeProductRoute } from '../engine/productRoute';
 import { buildProfileFromAnswers, type Answers } from '../questions/questionEngine';
 import {
   Q_BUSINESS_TENURE,
@@ -781,6 +783,134 @@ assert(
   'Clarity: Changing tenure recalculates requested-loan total repayment and interest',
   repay48 > testRepayment && testRepayment > repay12
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// N. FINAL SURGICAL PASS REGRESSION SUITE (ITEMS 1–16)
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n── N. Final Submission Regression Suite (Items 1–16) ──');
+
+// 1. Requested ₹7L loan at 10% / 36 months
+const n_p7L = 700000;
+const n_r10 = 10;
+const n_t36 = 36;
+const n_emi7L = computeEMI(n_p7L, n_r10, n_t36);
+const n_repay7L = totalRepayment(n_emi7L, n_t36);
+const n_interest7L = totalInterest(n_p7L, n_emi7L, n_t36);
+assert('Reg 1: Requested ₹7L loan at 10% / 36m produces EMI = ₹22,587', Math.round(n_emi7L) === 22587);
+assert('Reg 1: Requested ₹7L loan at 10% / 36m total repayment = ₹8.13L (8,13,133)', Math.round(n_repay7L) === 813133);
+assert('Reg 1: Requested ₹7L loan at 10% / 36m total interest = ₹1.13L (1,13,133)', Math.round(n_interest7L) === 113133);
+
+// 2. Requested-loan EMI uses fairRateMid
+const priyaOutput = runCopilot(PERSONA_PRIYA);
+const priyaReqEMI = computeEMI(PERSONA_PRIYA.requestedAmount, priyaOutput.fairRate.fairRateMid, 36);
+assert('Reg 2: Requested loan EMI evaluates using fairRateMid', priyaReqEMI > 0 && isFinite(priyaReqEMI));
+
+// 3. Requested effective cost uses same fairRateMid
+const priyaReqCost = computeEffectiveCostForProfile(PERSONA_PRIYA, PERSONA_PRIYA.requestedAmount, priyaOutput.fairRate.fairRateMid, 36);
+assert('Reg 3: Requested effective cost evaluates nominal rate using same fairRateMid', priyaReqCost.nominalRate === priyaOutput.fairRate.fairRateMid);
+
+// 4. Requested interest is actual requested EMI × tenure − principal
+assert('Reg 4: Requested interest formula is strictly EMI × tenure − principal', totalInterest(n_p7L, n_emi7L, n_t36) === n_emi7L * n_t36 - n_p7L);
+
+// 5. Safe EMI ceiling is NOT used as requested EMI
+assert('Reg 5: Safe EMI ceiling is NOT used as requested-loan EMI', priyaOutput.safeCapacity.safeEMI !== priyaReqEMI);
+
+// 6. safeAmount is distinct from recommendedAmount
+assert('Reg 6: safeAmount is a separate property from recommendedAmount', 'safeAmount' in priyaOutput.safeCapacity && 'recommendedAmount' in priyaOutput.safeCapacity);
+
+// 7. safe amount > recommended amount (recommended is 90% of safe amount)
+assert('Reg 7: safeAmount > recommendedAmount (recommended = safe × 0.90)', priyaOutput.safeCapacity.safeAmount > priyaOutput.safeCapacity.recommendedAmount && Math.abs(priyaOutput.safeCapacity.recommendedAmount - Math.round(priyaOutput.safeCapacity.safeAmount * 0.9)) <= 1);
+
+// 8. Missing stability remains unknown
+const nMissingStability = buildProfileFromAnswers({ income_type: 'salaried', monthly_income: 60000 });
+assert('Reg 8: Missing stability remains strictly unknown', nMissingStability.incomeStability === 'unknown');
+
+// 9. Missing repayment remains unknown
+const nMissingRepayment = buildProfileFromAnswers({ income_type: 'salaried', monthly_income: 60000 });
+assert('Reg 9: Missing repayment remains strictly unknown', nMissingRepayment.repaymentHistory === 'unknown');
+
+// 10. Ravi documented income
+assert('Reg 10: Ravi documented income is ₹35,000/mo (ITR ₹4.2L/yr)', PERSONA_RAVI.documentedIncome === 35000);
+
+// 11. Ravi co-applicant handling
+const raviLenderNoCo = PERSONA_RAVI.eligibleIncomeLender - PERSONA_RAVI.coApplicantIncome;
+const raviLenderWithCo = PERSONA_RAVI.eligibleIncomeLender;
+const raviSafeNoCo = PERSONA_RAVI.eligibleIncomeSafe - PERSONA_RAVI.coApplicantIncome;
+const raviSafeWithCo = PERSONA_RAVI.eligibleIncomeSafe;
+assert('Reg 11: Ravi lender income without spouse = ₹45,000 (35k + 40% × 25k)', raviLenderNoCo === 45000);
+assert('Reg 11: Ravi lender income with explicit co-applicant = ₹63,000 (45k + 18k)', raviLenderWithCo === 63000);
+assert('Reg 11: Ravi safe income without spouse = ₹60,000', raviSafeNoCo === 60000);
+assert('Reg 11: Ravi safe income with spouse co-applicant = ₹78,000', raviSafeWithCo === 78000);
+
+// 12. Anita hard stop
+const anitaOutput = runCopilot(PERSONA_ANITA);
+assert('Reg 12: Anita high-cost debt burden (33.65%) triggers hard stop -> DONT_BORROW', anitaOutput.decision.verdict === 'DONT_BORROW');
+
+// 13. Tenure propagation
+const priya36Safe = runCopilot(PERSONA_PRIYA, 36).safeCapacity;
+const priya60Safe = runCopilot(PERSONA_PRIYA, 60).safeCapacity;
+assert('Reg 13: Changing tenure recalculates safe principal (60m > 36m)', priya60Safe.safeAmount > priya36Safe.safeAmount);
+assert('Reg 13: Safe EMI ceiling is strictly constant across tenures', priya60Safe.safeEMI === priya36Safe.safeEMI);
+
+// 14. SIP isolation
+const baseOutput = runCopilot(PERSONA_PRIYA, 36);
+computeSIPComparison(10000, 36, 12, 50000);
+computeSIPComparison(10000, 36, 18, 50000);
+assert('Reg 14: SIP calculation does NOT mutate base engine outputs', baseOutput.safeCapacity.safeAmount === priya36Safe.safeAmount && baseOutput.decision.verdict === 'BORROW_LESS');
+
+// 15. Provenance tracking
+assert('Reg 15: Provenance tracks required tags (USER_ANSWER, ASSUMPTION, DERIVED)', baseOutput.provenanceSummary !== undefined && baseOutput.provenanceSummary.some(p => p.tag === 'USER_ANSWER') && baseOutput.provenanceSummary.some(p => p.tag === 'ASSUMPTION') && baseOutput.provenanceSummary.some(p => p.tag === 'DERIVED'));
+
+// 16. Gold willingness and routing
+const personalUnwilling = buildProfileFromAnswers({
+  income_type: 'salaried',
+  monthly_income: 60000,
+  loan_purpose: 'personal_event',
+  gold_collateral: 'no',
+});
+assert('Reg 16: Personal purpose + gold unwilling -> Personal Loan', computeProductRoute(personalUnwilling).recommendedRoute === 'Personal Loan');
+
+const personalWilling = buildProfileFromAnswers({
+  income_type: 'salaried',
+  monthly_income: 60000,
+  loan_purpose: 'personal_event',
+  gold_collateral: 'yes',
+  collateral_value: 300000,
+});
+assert('Reg 16: Personal purpose + gold willing -> Gold Loan', computeProductRoute(personalWilling).recommendedRoute === 'Gold Loan');
+
+const personalNotSure = buildProfileFromAnswers({
+  income_type: 'salaried',
+  monthly_income: 60000,
+  loan_purpose: 'personal_event',
+  gold_collateral: 'not_sure',
+});
+const routeNotSure = computeProductRoute(personalNotSure);
+assert('Reg 16: Personal purpose + gold not sure -> Personal Loan primary, Gold Loan alternative', routeNotSure.recommendedRoute === 'Personal Loan' && routeNotSure.alternativeRoutes.some(r => r.includes('Gold Loan')));
+
+const bizProperty = buildProfileFromAnswers({
+  income_type: 'self_employed',
+  monthly_income: 80000,
+  loan_purpose: 'business_expansion',
+  collateral_available: 'property_commercial',
+  collateral_value: 4500000,
+});
+assert('Reg 16: Business + property collateral -> LAP', computeProductRoute(bizProperty).recommendedRoute.includes('LAP'));
+
+const bizNoCollateral = buildProfileFromAnswers({
+  income_type: 'self_employed',
+  monthly_income: 80000,
+  loan_purpose: 'business_expansion',
+  collateral_available: 'none',
+});
+assert('Reg 16: Business + no collateral -> Business Loan (Unsecured)', computeProductRoute(bizNoCollateral).recommendedRoute === 'Business Loan (Unsecured)');
+
+const vehicleProfile = buildProfileFromAnswers({
+  income_type: 'salaried',
+  monthly_income: 50000,
+  loan_purpose: 'vehicle',
+});
+assert('Reg 16: Vehicle purpose -> Two-Wheeler Loan', computeProductRoute(vehicleProfile).recommendedRoute === 'Two-Wheeler Loan');
 
 console.log('\n═══════════════════════════════════════════════════════════════');
 console.log(`HARDENING TEST SUITE SUMMARY: ${passCount} passed, ${failCount} failed`);

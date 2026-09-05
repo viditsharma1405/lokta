@@ -36,15 +36,6 @@ export function computeProductRoute(profile: BorrowerProfile): ProductRouteResul
   }
 
   if (loanPurpose === 'business_expansion') {
-    if (hasCollateral && collateral.type === 'gold') {
-      return {
-        recommendedRoute: 'Gold Loan (for business purpose)',
-        isSecured: true,
-        alternativeRoutes: ['Business Loan (unsecured)', 'LAP (if property available)'],
-        rationale: 'Gold loan gives the fastest disbursal and lowest paperwork at a competitive rate.',
-        tradeoffs: ['Gold is pledged and cannot be used until loan is repaid', 'Shorter tenures (typically 12 months) require refinancing or repayment'],
-      };
-    }
     if (hasCollateral && (collateral.type === 'property_commercial' || collateral.type === 'property_residential')) {
       const routeName = collateral.type === 'property_commercial' ? 'LAP (Commercial Property)' : 'LAP (Residential Property)';
       return {
@@ -62,10 +53,23 @@ export function computeProductRoute(profile: BorrowerProfile): ProductRouteResul
         securityWarning: 'Your property is at risk if you default. Do not borrow more than your safe capacity even though the lender may allow more.',
       };
     }
+    if (hasCollateral && collateral.type === 'gold' && collateral.willingToPledge === 'yes') {
+      return {
+        recommendedRoute: 'Gold Loan (for business purpose)',
+        isSecured: true,
+        alternativeRoutes: ['Business Loan (unsecured)', 'LAP (if property available)'],
+        rationale: 'Gold loan gives the fastest disbursal and lowest paperwork at a competitive rate.',
+        tradeoffs: ['Gold is pledged and cannot be used until loan is repaid', 'Shorter tenures (typically 12 months) require refinancing or repayment'],
+      };
+    }
+    const bizAlternatives = ['Personal Loan (if business documents unavailable)'];
+    if (collateral.willingToPledge === 'not_sure') {
+      bizAlternatives.unshift('Gold Loan (worth comparing if willing to pledge gold)');
+    }
     return {
       recommendedRoute: 'Business Loan (Unsecured)',
       isSecured: false,
-      alternativeRoutes: ['Personal Loan (if business documents unavailable)'],
+      alternativeRoutes: bizAlternatives,
       rationale: 'Unsecured business loan based on ITR/bank statement. Higher rate than LAP but no collateral risk.',
       tradeoffs: [
         'Higher interest rate than secured alternatives',
@@ -75,7 +79,8 @@ export function computeProductRoute(profile: BorrowerProfile): ProductRouteResul
     };
   }
 
-  if (hasCollateral && collateral.type === 'gold') {
+  // Personal / Medical / Education / Other purposes
+  if (hasCollateral && collateral.type === 'gold' && collateral.willingToPledge === 'yes') {
     return {
       recommendedRoute: 'Gold Loan',
       isSecured: true,
@@ -85,11 +90,18 @@ export function computeProductRoute(profile: BorrowerProfile): ProductRouteResul
     };
   }
 
-  // Default: personal loan
+  // Default: personal loan (primary for unsecured / unwilling / not sure)
+  const defaultAlternatives: string[] = [];
+  if (collateral.willingToPledge === 'not_sure') {
+    defaultAlternatives.push('Gold Loan (worth comparing if open to pledging gold)');
+  } else if (hasCollateral && (collateral.type === 'property_commercial' || collateral.type === 'property_residential')) {
+    defaultAlternatives.push('LAP (if property available)');
+  }
+
   return {
     recommendedRoute: 'Personal Loan',
     isSecured: false,
-    alternativeRoutes: hasCollateral ? ['LAP (if property available)'] : [],
+    alternativeRoutes: defaultAlternatives,
     rationale: 'Personal loan is the most straightforward product for this purpose with no collateral required.',
     tradeoffs: [
       'Higher interest rate than secured alternatives',

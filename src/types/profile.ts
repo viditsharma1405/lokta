@@ -42,6 +42,7 @@ export interface TaggedValue<T> {
 export interface Collateral {
   type: CollateralType;
   statedValue: number | null;  // null = unknown
+  willingToPledge?: 'yes' | 'no' | 'not_sure';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

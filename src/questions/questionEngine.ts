@@ -185,10 +185,19 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
     claimedTotalIncome = documentedIncome;
   }
 
-  // Collateral
+  // Collateral & Gold Willingness
   let collateralType = (str(answers.collateral_available) as CollateralType) || 'none';
+  let willingToPledge: 'yes' | 'no' | 'not_sure' | undefined = undefined;
+
   if (answers.gold_collateral === 'yes') {
     collateralType = 'gold';
+    willingToPledge = 'yes';
+  } else if (answers.gold_collateral === 'no') {
+    willingToPledge = 'no';
+    if (collateralType === 'gold') collateralType = 'none';
+  } else if (answers.gold_collateral === 'not_sure') {
+    willingToPledge = 'not_sure';
+    if (collateralType === 'gold') collateralType = 'none';
   }
   const collateralValue = collateralType !== 'none' ? num(answers.collateral_value) : null;
 
@@ -202,10 +211,14 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
   if (loanPurpose === 'home_purchase') loanTypeForSecured = 'home_loan';
   else if (loanPurpose === 'vehicle') loanTypeForSecured = 'two_wheeler_loan';
   else if (loanPurpose === 'business_expansion') {
-    if (hasCollateral)
+    if (hasCollateral && (collateralType === 'property_commercial' || collateralType === 'property_residential'))
       loanTypeForSecured = collateralType === 'property_commercial' ? 'lap_commercial' : 'lap';
+    else if (hasCollateral && collateralType === 'gold' && willingToPledge === 'yes')
+      loanTypeForSecured = 'gold_loan';
     else loanTypeForSecured = 'business_loan';
-  } else if (collateralType === 'gold') loanTypeForSecured = 'gold_loan';
+  } else if (collateralType === 'gold' && willingToPledge === 'yes') {
+    loanTypeForSecured = 'gold_loan';
+  }
   const secured = isSecuredProduct(loanTypeForSecured);
 
   // Income Stability (Never infer stability merely from employment type)
@@ -342,7 +355,7 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
     essentialExpenses: expenses.value,
     essentialExpensesIsDefaulted: expenses.isDefaulted,
     essentialExpensesRange: expenses.range,
-    collateral: { type: collateralType, statedValue: collateralValue },
+    collateral: { type: collateralType, statedValue: collateralValue, willingToPledge },
     creditScore,
     creditScoreStatus,
     repaymentHistory,

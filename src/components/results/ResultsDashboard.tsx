@@ -82,12 +82,14 @@ function TenureSlider({
   value,
   options,
   defaultTenure,
+  isAssumed = false,
   onChange,
 }: {
   label?: string;
   value: number;
   options: number[];
   defaultTenure: number;
+  isAssumed?: boolean;
   onChange: (v: number) => void;
 }) {
   const minIdx = 0;
@@ -99,14 +101,24 @@ function TenureSlider({
     background: `linear-gradient(to right, #5a2045 0%, #5a2045 ${pct}%, #eae3d9 ${pct}%, #eae3d9 100%)`,
   };
 
+  const yearsStr = (value / 12).toFixed(value % 12 === 0 ? 0 : 1);
+
   return (
     <div className="py-2.5 touch-pan-y">
       <div className="flex justify-between items-center mb-1.5 gap-2">
-        <span className="text-xs font-medium text-[#52525b]">{label}</span>
+        <span className="text-xs font-medium text-[#52525b]">
+          {isAssumed ? `Assumed tenure for this estimate: ${yearsStr} years` : label}
+        </span>
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          {value === defaultTenure && (
-            <span className="text-[10px] text-[#5a2045] bg-[#f4e7f0] border border-[#e8d0e0] px-1.5 py-0.2 rounded font-semibold">Default</span>
-          )}
+          {isAssumed ? (
+            <span className="text-[10px] text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded font-bold">
+              ASSUMPTION
+            </span>
+          ) : value === defaultTenure ? (
+            <span className="text-[10px] text-[#5a2045] bg-[#f4e7f0] border border-[#e8d0e0] px-1.5 py-0.2 rounded font-semibold">
+              Default
+            </span>
+          ) : null}
           <span className="text-sm font-bold text-[#18181b] bg-[#faf7f2] px-2 py-0.5 rounded-md border border-[#eae3d9]">
             {value} months
           </span>
@@ -292,7 +304,8 @@ export default function ResultsDashboard({ profile, output: _output, personaName
   // Mobile segment control: Results vs Adjust Finances
   const [mobileTab, setMobileTab] = useState<'results' | 'finances'>('results');
 
-  // Feature state: If invest instead (Illustrative SIP)
+  // Feature state: If invest instead (Illustrative SIP — optional / collapsed by default)
+  const [showSip, setShowSip] = useState<boolean>(false);
   const [sipReturnPct, setSipReturnPct] = useState<number>(12);
 
   // Compact expandable state for What We Know vs What We Assumed
@@ -328,15 +341,15 @@ export default function ResultsDashboard({ profile, output: _output, personaName
     };
   }, [requestedAmount, effectiveInterestRate, simulatedTenure, safeCapacity.safeEMI]);
 
-  // Effective cost evaluated specifically for the requested loan principal
+  // Effective cost evaluated specifically for the requested loan principal using the SAME fairRateMid
   const requestedEffectiveCost = useMemo(() => {
     return computeEffectiveCostForProfile(
       updatedProfile,
       requestedAmount,
-      fairRate.fairRateHigh,
+      fairRate.fairRateMid,
       simulatedTenure
     );
-  }, [updatedProfile, requestedAmount, fairRate.fairRateHigh, simulatedTenure]);
+  }, [updatedProfile, requestedAmount, fairRate.fairRateMid, simulatedTenure]);
 
 
 
@@ -479,6 +492,7 @@ export default function ResultsDashboard({ profile, output: _output, personaName
               value={simulatedTenure}
               options={tenureOpts}
               defaultTenure={defaultTenure}
+              isAssumed={!profile.requestedTenureMonths && simulatedTenure === defaultTenure}
               onChange={setSimulatedTenure}
             />
           </div>
@@ -600,6 +614,7 @@ export default function ResultsDashboard({ profile, output: _output, personaName
 
           {/* Two Amounts */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            {/* Lender-Likely Card */}
             <div className="bg-white rounded-xl border border-[#eae3d9] p-4 shadow-xs">
               <div className="flex items-center gap-1.5 mb-2">
                 <span className="w-5 h-5 bg-[#5a2045] text-white rounded-full flex items-center justify-center text-xs font-bold">L</span>
@@ -626,30 +641,45 @@ export default function ResultsDashboard({ profile, output: _output, personaName
               </Expandable>
             </div>
 
+            {/* Borrower-Safe Ceiling Card */}
             <div className={`rounded-xl border-2 p-4 shadow-xs ${isDontBorrow ? 'bg-[#fef2f2] border-[#fecaca]' : 'bg-[#f2f8f4] border-[#a7f3d0]'}`}>
-              <div className="flex items-center gap-1.5 mb-2">
-                <span className={`w-5 h-5 ${isDontBorrow ? 'bg-red-600' : 'bg-[#065f46]'} text-white rounded-full flex items-center justify-center text-xs font-bold`}>S</span>
-                <span className="text-xs font-semibold text-[#71717a]">Borrower-Safe</span>
+              <div className="flex items-center justify-between gap-1.5 mb-2">
+                <div className="flex items-center gap-1.5">
+                  <span className={`w-5 h-5 ${isDontBorrow ? 'bg-red-600' : 'bg-[#065f46]'} text-white rounded-full flex items-center justify-center text-xs font-bold`}>🛡</span>
+                  <span className="text-xs font-bold text-[#18181b]">Borrower-Safe Ceiling</span>
+                </div>
                 <ConfidenceDot level={safeCapacity.confidence} />
               </div>
-              <p className={`text-2xl font-extrabold ${isDontBorrow ? 'text-red-600' : 'text-[#065f46]'}`}>{formatLakhs(safeCapacity.recommendedAmount)}</p>
-              <p className="text-xs text-[#71717a] mt-0.5">
-                Baseline at {defaultTenure}mo default · {isDontBorrow ? 'Mathematical capacity only — not a recommendation' : '← Use this number'}
+              <p className={`text-2xl font-extrabold ${isDontBorrow ? 'text-red-600' : 'text-[#065f46]'}`}>{formatLakhs(safeCapacity.safeAmount)}</p>
+              <p className="text-xs text-[#52525b] mt-0.5">
+                Maximum principal supported by your borrower-safe EMI ceiling.
               </p>
+              {safeCapacity.safeAmountRange && (
+                <p className="text-[11px] text-[#71717a] mt-0.5">
+                  Range: {formatLakhs(safeCapacity.safeAmountRange.low)}–{formatLakhs(safeCapacity.safeAmountRange.high)}
+                </p>
+              )}
+
+              {/* Recommended Target */}
+              <div className="mt-3 pt-2.5 border-t border-[#cde5d6] bg-white/80 rounded-lg p-2.5 border border-[#cde5d6]">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-xs font-bold text-[#065f46]">Recommended target:</span>
+                  <span className="text-base font-extrabold text-[#065f46]">{formatLakhs(safeCapacity.recommendedAmount)}</span>
+                </div>
+                <p className="text-[11px] text-[#71717a] mt-0.5 leading-tight">
+                  90% of your safe ceiling, leaving additional headroom (← Negotiate toward this target).
+                </p>
+              </div>
+
               {isDontBorrow && (
                 <div className="mt-2 p-1.5 bg-red-100/70 border border-red-200 rounded text-[11px] font-bold text-red-700 text-center">
                   Mathematical capacity only — not a recommendation.
                 </div>
               )}
-              {safeCapacity.safeAmountRange && (
-                <p className="text-xs text-[#52525b] mt-0.5">
-                  Range: {formatLakhs(safeCapacity.safeAmountRange.low)}–{formatLakhs(safeCapacity.safeAmountRange.high)}
-                </p>
-              )}
               {simulatedTenure !== defaultTenure && (
                 <div className="mt-2 pt-2 border-t border-[#cde5d6] text-xs">
                   <span className="text-[#52525b]">What-If at {simulatedTenure}mo: </span>
-                  <span className="font-bold text-[#065f46]">{formatLakhs(simulatedScenario.safeCapacity.recommendedAmount)}</span>
+                  <span className="font-bold text-[#065f46]">Ceiling {formatLakhs(simulatedScenario.safeCapacity.safeAmount)} · Target {formatLakhs(simulatedScenario.safeCapacity.recommendedAmount)}</span>
                 </div>
               )}
               <Expandable title="How this was calculated">
@@ -658,11 +688,11 @@ export default function ResultsDashboard({ profile, output: _output, personaName
             </div>
           </div>
 
-          {/* Rule 4: Why Two Amounts Differ */}
-          <div className="bg-[#faf7f2] rounded-xl p-3 border border-[#eae3d9] text-xs text-[#52525b] flex items-start gap-2">
-            <span className="text-[#5a2045] font-bold shrink-0">Why two amounts:</span>
+          {/* Rule 4: Hierarchy & Why Amounts Differ */}
+          <div className="bg-[#faf7f2] rounded-xl p-3.5 border border-[#eae3d9] text-xs text-[#52525b] flex items-start gap-2.5">
+            <span className="text-[#5a2045] font-bold shrink-0">Borrowing hierarchy:</span>
             <span>
-              Lender-Likely (<strong>{formatLakhs(lenderCapacity.lenderLikelyAmount)}</strong>) reflects the lender's gross FOIR formula ignoring your family living costs. Borrower-Safe (<strong>{formatLakhs(safeCapacity.recommendedAmount)}</strong>) is strictly based on your reported cash surplus after essentials.
+              <strong>Lender-Likely ({formatLakhs(lenderCapacity.lenderLikelyAmount)})</strong> reflects the lender's gross FOIR formula ignoring your family living costs. <strong>Borrower-Safe Ceiling ({formatLakhs(safeCapacity.safeAmount)})</strong> is the maximum principal supported by your safe EMI ceiling. <strong>Recommended Target ({formatLakhs(safeCapacity.recommendedAmount)})</strong> is 90% of your safe ceiling, leaving additional headroom — negotiate toward this target.
             </span>
           </div>
 
@@ -677,7 +707,12 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                 <h3 className="text-base font-bold text-[#18181b]">Your Requested Loan &amp; Affordability</h3>
               </div>
               <div className="text-xs text-[#71717a] bg-[#faf7f2] px-3 py-1.5 rounded-lg border border-[#eae3d9] self-start sm:self-auto">
-                Tenure: <strong className="text-[#18181b]">{simulatedTenure} months</strong> · Fair Rate: <strong className="text-[#5a2045]">{effectiveInterestRate.toFixed(1)}% p.a.</strong>
+                {simulatedTenure === defaultTenure && !profile.requestedTenureMonths ? (
+                  <span>Assumed tenure for this estimate: <strong className="text-[#18181b]">{(defaultTenure / 12).toFixed(defaultTenure % 12 === 0 ? 0 : 1)} years</strong> ({defaultTenure}m) · <span className="font-bold text-amber-800 bg-amber-50 px-1 py-0.2 rounded text-[10px]">ASSUMPTION</span> · </span>
+                ) : (
+                  <span>Tenure: <strong className="text-[#18181b]">{simulatedTenure} months</strong> · </span>
+                )}
+                Fair Rate: <strong className="text-[#5a2045]">{effectiveInterestRate.toFixed(1)}% p.a.</strong>
               </div>
             </div>
 
@@ -713,8 +748,8 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                   <span className="text-sm">{requestedLoanCalculations.isBelowCeiling ? '✓' : '⚠'}</span>
                   <span>
                     {requestedLoanCalculations.isBelowCeiling
-                      ? `Your requested EMI (${formatEMI(requestedLoanCalculations.emi)}) is below your estimated safe ceiling (${formatEMI(safeCapacity.safeEMI)}).`
-                      : `Your requested EMI (${formatEMI(requestedLoanCalculations.emi)}) is above your estimated safe ceiling (${formatEMI(safeCapacity.safeEMI)}) by ${formatEMI(requestedLoanCalculations.emi - safeCapacity.safeEMI)}.`}
+                      ? `✓ Requested EMI (${formatEMI(requestedLoanCalculations.emi)}) is below your estimated safe ceiling (${formatEMI(safeCapacity.safeEMI)}).`
+                      : `⚠ Requested EMI (${formatEMI(requestedLoanCalculations.emi)}) is above your estimated safe ceiling (${formatEMI(safeCapacity.safeEMI)}) by ${formatEMI(requestedLoanCalculations.emi - safeCapacity.safeEMI)}.`}
                   </span>
                 </div>
                 <div className="text-[11px] font-bold shrink-0 bg-white/70 px-2 py-0.5 rounded border border-current">
@@ -736,15 +771,15 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                 <div className="min-w-0 bg-white rounded-xl border-2 border-[#e8d0e0] p-3 shadow-xs flex flex-col justify-between overflow-hidden">
                   <div>
                     <div className="flex items-center justify-between gap-1 mb-1.5">
-                      <p className="text-[11px] font-bold text-[#5a2045] truncate">Requested EMI</p>
-                      <span className="text-[9px] bg-[#faf4f8] text-[#5a2045] font-bold px-1.5 py-0.5 rounded border border-[#e8d0e0] shrink-0">Wanted</span>
+                      <p className="text-[11px] font-bold text-[#5a2045] truncate">Requested Loan EMI</p>
+                      <span className="text-[9px] bg-[#faf4f8] text-[#5a2045] font-bold px-1.5 py-0.5 rounded border border-[#e8d0e0] shrink-0">Actual</span>
                     </div>
                     <p className="text-base sm:text-lg font-black text-[#5a2045] tracking-tight truncate">
                       {formatEMI(requestedLoanCalculations.emi)}
                     </p>
                   </div>
                   <p className="text-[10px] text-[#71717a] mt-1.5 leading-tight">
-                    EMI for {formatLakhs(requestedAmount)} loan at {effectiveInterestRate.toFixed(1)}% ({simulatedTenure}m)
+                    What you would actually pay for {formatLakhs(requestedAmount)} principal at {effectiveInterestRate.toFixed(1)}% ({simulatedTenure}m)
                   </p>
                 </div>
 
@@ -752,8 +787,8 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                 <div className="min-w-0 bg-[#f2f8f4] rounded-xl border-2 border-[#a7f3d0] p-3 shadow-xs flex flex-col justify-between overflow-hidden">
                   <div>
                     <div className="flex items-center justify-between gap-1 mb-1.5">
-                      <p className="text-[11px] font-bold text-[#065f46] truncate">Safe Ceiling</p>
-                      <span className="text-[9px] bg-[#ecfdf5] text-[#065f46] font-bold px-1.5 py-0.5 rounded border border-[#a7f3d0] shrink-0">Limit</span>
+                      <p className="text-[11px] font-bold text-[#065f46] truncate">Borrower-Safe Ceiling</p>
+                      <span className="text-[9px] bg-[#ecfdf5] text-[#065f46] font-bold px-1.5 py-0.5 rounded border border-[#a7f3d0] shrink-0">Safe Limit</span>
                     </div>
                     <p className="text-base sm:text-lg font-black text-[#065f46] tracking-tight truncate">
                       {formatEMI(safeCapacity.safeEMI)}
@@ -768,7 +803,7 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                 <div className="min-w-0 bg-white rounded-xl border border-[#eae3d9] p-3 shadow-xs flex flex-col justify-between overflow-hidden">
                   <div>
                     <div className="flex items-center justify-between gap-1 mb-1.5">
-                      <p className="text-[11px] font-bold text-[#18181b] truncate">Recommended</p>
+                      <p className="text-[11px] font-bold text-[#18181b] truncate">Recommended Target</p>
                       <span className="text-[9px] bg-[#faf7f2] text-[#71717a] font-bold px-1.5 py-0.5 rounded border border-[#eae3d9] shrink-0">90% Buffer</span>
                     </div>
                     <p className="text-base sm:text-lg font-black text-[#18181b] tracking-tight truncate">
@@ -776,7 +811,7 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                     </p>
                   </div>
                   <p className="text-[10px] text-[#71717a] mt-1.5 leading-tight">
-                    Safe ceiling × 90% presentation buffer for unplanned shocks
+                    Safe ceiling × 90% leaving additional headroom for unexpected costs
                   </p>
                 </div>
 
@@ -807,8 +842,63 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                 <strong>Safe EMI ceiling is the maximum monthly loan payment we estimate you can comfortably carry. It is NOT the EMI for your requested loan.</strong>
               </p>
               <p className="text-[#71717a] mt-1">
-                Why your safe ceiling is {formatEMI(safeCapacity.safeEMI)} and not higher: It reserves exactly {(safeCapacity.adjustedRetentionFactor * 100).toFixed(0)}% of your {formatCurrency(safeCapacity.disposableCashFlow, true)} disposable monthly surplus (after essentials &amp; existing debt) so you never risk default.
+                Why your safe ceiling is {formatEMI(safeCapacity.safeEMI)} and not higher: It reserves exactly {(safeCapacity.adjustedRetentionFactor * 100).toFixed(0)}% of your {formatCurrency(safeCapacity.disposableCashFlow, true)} disposable monthly surplus (after essentials &amp; existing debt) to leave a buffer for unexpected costs and reduce payment stress.
               </p>
+            </div>
+
+            {/* Clearly Labeled Tenure Simulator */}
+            <div className="border-t border-[#eae3d9] pt-4">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 mb-2">
+                <div>
+                  <h4 className="text-xs font-bold text-[#18181b] uppercase tracking-wider">
+                    Tenure Simulator — Safe-Amount Scenario
+                  </h4>
+                  <p className="text-xs text-[#71717a]">
+                    Simulating your Borrower-Safe ceiling principal: <strong>{formatLakhs(safeCapacity.safeAmount)}</strong> (at {effectiveInterestRate.toFixed(1)}% fair mid-rate)
+                  </p>
+                </div>
+                <span className="text-[11px] text-[#5a2045] font-semibold bg-[#faf4f8] px-2 py-0.5 rounded border border-[#e8d0e0] self-start sm:self-auto">
+                  Click tenure to simulate
+                </span>
+              </div>
+              <p className="text-[11px] text-[#71717a] mb-3 leading-relaxed">
+                Note: The simulation tiles below show what you would pay if you borrow your <strong>Borrower-Safe ceiling ({formatLakhs(safeCapacity.safeAmount)})</strong>, NOT your requested loan ({formatLakhs(requestedAmount)}). Clicking any tenure also updates your requested loan's EMI, total repayment, and effective cost above.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                {tenureOpts.map(t => {
+                  const simSafeEMI = computeEMI(safeCapacity.safeAmount, effectiveInterestRate, t);
+                  const simSafeTotal = totalRepayment(simSafeEMI, t);
+                  const isDefault = t === defaultTenure;
+                  const isSimulated = t === simulatedTenure;
+                  const isAboveCeiling = simSafeEMI > safeCapacity.safeEMI;
+                  return (
+                    <button
+                      type="button"
+                      key={t}
+                      onClick={() => setSimulatedTenure(t)}
+                      className={`rounded-xl p-3 text-left border transition-all cursor-pointer overflow-hidden ${
+                        isSimulated ? 'border-[#5a2045] ring-2 ring-[#5a2045] bg-[#faf4f8]' :
+                        isDefault ? 'border-[#e8d0e0] bg-[#faf7f2]' :
+                        isAboveCeiling ? 'border-red-200 bg-red-50' :
+                        'border-[#eae3d9] bg-white hover:border-[#5a2045]'
+                      }`}
+                    >
+                      <div className="flex justify-between items-center text-[10px] text-[#71717a] mb-1">
+                        <span className="font-bold text-[#18181b]">Safe-amount scenario — {t} months</span>
+                        {isSimulated && <span className="text-[9px] bg-[#5a2045] text-white px-1.5 py-0.2 rounded font-bold">Active</span>}
+                        {!isSimulated && isDefault && <span className="text-[9px] text-[#5a2045] font-semibold">Default</span>}
+                      </div>
+                      <p className={`text-sm sm:text-base font-bold tracking-tight truncate ${isSimulated ? 'text-[#5a2045]' : isDefault ? 'text-[#5a2045]' : isAboveCeiling ? 'text-red-600' : 'text-[#18181b]'}`}>
+                        Estimated EMI: {formatEMI(simSafeEMI)}
+                      </p>
+                      <p className="text-xs text-[#71717a] mt-1 leading-snug">
+                        Total repayment for safe-amount scenario: <strong>{formatCurrency(simSafeTotal, true)}</strong>
+                      </p>
+                      {isAboveCeiling && <p className="text-[11px] text-red-600 font-medium mt-0.5">↑ exceeds safe ceiling</p>}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
@@ -840,11 +930,11 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                   <p className="mt-0.5 text-[11px] leading-relaxed">
                     With {fairRate.unknownCount} factor{fairRate.unknownCount > 1 ? 's' : ''} unknown, your rate band is widened by ±{(fairRate.unknownCount * 1.5).toFixed(1)}% to reflect real uncertainty rather than false precision.
                   </p>
-                  {profile.creditScoreStatus === 'unknown' && (
-                    <p className="mt-1 text-[11px] leading-relaxed text-[#78350f]">
-                      • <strong>Credit score unknown:</strong> Not penalized as 300; benchmarked against NBFC tier ({fairRate.baseBandLow}%–{fairRate.baseBandHigh}%) with widened band. A confirmed score ≥700 could unlock bank-tier rates.
-                    </p>
-                  )}
+                    {profile.creditScoreStatus === 'unknown' && (
+                      <p className="mt-1 text-[11px] leading-relaxed text-[#78350f]">
+                        • <strong>Credit score unknown:</strong> Not penalized as 300; benchmarked against NBFC tier ({fairRate.baseBandLow}%–{fairRate.baseBandHigh}%) with widened band. A documented score ≥700 could unlock bank-tier rates.
+                      </p>
+                    )}
                 </div>
               )}
             </div>
@@ -865,7 +955,7 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                 Evaluated on your requested loan of <strong>{formatCurrency(requestedAmount, true)}</strong> ({simulatedTenure}m tenure)
               </p>
               <p className="text-xs text-[#71717a]">
-                Nominal: {formatPercent(requestedEffectiveCost.nominalRate)} + processing fee (~{requestedEffectiveCost.processingFeePct.toFixed(1)}%)
+                Nominal rate: {formatPercent(requestedEffectiveCost.nominalRate)} + processing fee (~{requestedEffectiveCost.processingFeePct.toFixed(1)}%)
               </p>
               <div className="mt-2 text-[11px] text-[#71717a] bg-[#faf7f2] p-2 rounded border border-[#eae3d9] leading-tight">
                 <strong>Estimated Effective Annualized Borrowing Cost</strong> — NOT regulatory APR.
@@ -877,133 +967,147 @@ export default function ResultsDashboard({ profile, output: _output, personaName
             </div>
           </div>
 
-          {/* ── If You Invest Instead (Illustrative Opportunity Comparison) ── */}
-          <div className="bg-[#f2f8f4] rounded-xl border border-[#cde5d6] p-5 shadow-xs">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 bg-[#065f46] text-white rounded-lg flex items-center justify-center text-xs font-bold">📈</span>
-                  <h3 className="text-base font-bold text-[#065f46]">Illustrative Opportunity-Cost Comparison</h3>
+          {/* ── If You Invest Instead (Illustrative SIP comparison — secondary & optional) ── */}
+          <div className="bg-[#f2f8f4] rounded-xl border border-[#cde5d6] p-4 sm:p-5 shadow-xs">
+            <button
+              type="button"
+              onClick={() => setShowSip(!showSip)}
+              className="w-full flex items-center justify-between text-left cursor-pointer group"
+            >
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 bg-[#065f46] text-white rounded-lg flex items-center justify-center text-xs font-bold">📈</span>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-[#065f46] group-hover:underline">
+                    Illustrative SIP comparison (Optional)
+                  </h3>
+                  <p className="text-[11px] sm:text-xs text-[#047857]">
+                    Does not affect borrowing eligibility or loan limits.
+                  </p>
                 </div>
-                <p className="text-xs text-[#047857] mt-0.5">
-                  At an assumed 12% annual return, what if you skip this debt and invest the monthly EMI into a disciplined SIP? Not guaranteed; market returns can be lower or negative.
+              </div>
+              <span className="text-xs font-bold text-[#065f46] px-2.5 py-1 rounded-md bg-white border border-[#a7f3d0] shrink-0">
+                {showSip ? 'Hide comparison ▴' : 'View comparison ▾'}
+              </span>
+            </button>
+
+            {showSip && (
+              <div className="mt-4 pt-4 border-t border-[#cde5d6]">
+                <p className="text-xs text-[#047857] leading-relaxed mb-4">
+                  At an assumed annual return, what if you skip this debt and invest the monthly EMI into a disciplined SIP? Illustrative modeled difference under these assumptions. Not guaranteed; market returns can be lower or negative. Does not affect borrowing eligibility or loan limits.
                 </p>
-                <div className="mt-2 inline-flex items-center gap-1.5 bg-white text-[#065f46] text-[11px] font-medium px-2.5 py-1 rounded-md border border-[#a7f3d0]">
-                  <span>ℹ️</span> Assumed return: {sipReturnPct}% p.a. • Illustrative Opportunity-Cost Comparison. Not guaranteed; market returns can be lower or negative. Does not affect borrowing eligibility or loan limits.
-                </div>
-              </div>
-            </div>
 
-            {/* Expected Return Rate Selector */}
-            <div className="bg-white rounded-xl p-4 border border-[#cde5d6] mb-4 shadow-xs">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-xs font-semibold text-[#18181b]">Expected Annual Return Rate (p.a.):</span>
-                <span className="text-sm font-bold text-[#065f46] bg-[#ecfdf5] px-2.5 py-0.5 rounded-md border border-[#a7f3d0]">
-                  {sipReturnPct}% per year
-                </span>
-              </div>
-
-              {/* Preset return buttons */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-                {[
-                  { label: '7% FD / Debt', rate: 7 },
-                  { label: '10% Balanced', rate: 10 },
-                  { label: '12% Equity SIP', rate: 12 },
-                  { label: '15% Growth', rate: 15 },
-                ].map(preset => (
-                  <button
-                    key={preset.rate}
-                    onClick={() => setSipReturnPct(preset.rate)}
-                    className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition-all text-center border cursor-pointer ${
-                      sipReturnPct === preset.rate
-                        ? 'bg-[#065f46] text-white border-[#065f46] shadow-xs'
-                        : 'bg-[#faf7f2] text-[#52525b] border-[#eae3d9] hover:bg-[#f2efe9]'
-                    }`}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Fine-tune slider */}
-              <input
-                type="range"
-                min={4}
-                max={18}
-                step={0.5}
-                value={sipReturnPct}
-                onChange={e => setSipReturnPct(Number(e.target.value))}
-                className="w-full h-2 rounded-full appearance-none cursor-pointer accent-[#065f46]"
-              />
-              <div className="flex justify-between text-[11px] text-[#71717a] mt-1">
-                <span>4% (Conservative)</span>
-                <span>12% (Nifty 50 Historical)</span>
-                <span>18% (Aggressive)</span>
-              </div>
-            </div>
-
-            {/* Side-by-Side Comparison */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-              {/* Option A: Borrow */}
-              <div className="bg-white rounded-xl p-4 border border-red-200 shadow-xs">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <span className="w-4 h-4 bg-red-100 text-red-700 rounded-full flex items-center justify-center text-xs font-bold border border-red-200">✕</span>
-                  <span className="text-xs font-bold text-red-800 uppercase tracking-wide">Path A: Take the Loan</span>
-                </div>
-                <p className="text-xs text-[#71717a] mb-0.5">Monthly loan payment ({formatLakhs(sipPrincipal)} at {simulatedTenure} mo):</p>
-                <p className="text-lg font-bold text-red-600 mb-3">{formatEMI(sipComparison.monthlyInvestment)}</p>
-                <div className="space-y-1.5 text-xs border-t border-red-100 pt-2 text-[#52525b]">
-                  <div className="flex justify-between">
-                    <span>Total cash paid:</span>
-                    <span className="font-semibold text-[#18181b]">{formatCurrency(sipLoanCost.totalOutflow, true)}</span>
+                {/* Expected Return Rate Selector */}
+                <div className="bg-white rounded-xl p-4 border border-[#cde5d6] mb-4 shadow-xs">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs font-semibold text-[#18181b]">Expected Annual Return Rate (p.a.):</span>
+                    <span className="text-sm font-bold text-[#065f46] bg-[#ecfdf5] px-2.5 py-0.5 rounded-md border border-[#a7f3d0]">
+                      {sipReturnPct}% per year
+                    </span>
                   </div>
-                  <div className="flex justify-between text-red-600">
-                    <span>Interest lost forever:</span>
-                    <span className="font-semibold">-{formatCurrency(sipLoanCost.totalInterest, true)}</span>
+
+                  {/* Preset return buttons */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                    {[
+                      { label: '7% FD / Debt', rate: 7 },
+                      { label: '10% Balanced', rate: 10 },
+                      { label: '12% Equity SIP', rate: 12 },
+                      { label: '15% Growth', rate: 15 },
+                    ].map(preset => (
+                      <button
+                        key={preset.rate}
+                        onClick={() => setSipReturnPct(preset.rate)}
+                        className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition-all text-center border cursor-pointer ${
+                          sipReturnPct === preset.rate
+                            ? 'bg-[#065f46] text-white border-[#065f46] shadow-xs'
+                            : 'bg-[#faf7f2] text-[#52525b] border-[#eae3d9] hover:bg-[#f2efe9]'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
                   </div>
-                  <div className="flex justify-between pt-1 border-t border-dashed border-red-200">
-                    <span>Net wealth created:</span>
-                    <span className="font-bold text-[#71717a]">₹0</span>
+
+                  {/* Fine-tune slider */}
+                  <input
+                    type="range"
+                    min={4}
+                    max={18}
+                    step={0.5}
+                    value={sipReturnPct}
+                    onChange={e => setSipReturnPct(Number(e.target.value))}
+                    className="w-full h-2 rounded-full appearance-none cursor-pointer accent-[#065f46]"
+                  />
+                  <div className="flex justify-between text-[11px] text-[#71717a] mt-1">
+                    <span>4% (Conservative)</span>
+                    <span>12% (Nifty 50 Historical)</span>
+                    <span>18% (Aggressive)</span>
                   </div>
                 </div>
-              </div>
 
-              {/* Option B: Invest */}
-              <div className="bg-white rounded-xl p-4 border border-emerald-300 shadow-xs">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <span className="w-4 h-4 bg-emerald-100 text-[#065f46] rounded-full flex items-center justify-center text-xs font-bold border border-emerald-200">✓</span>
-                  <span className="text-xs font-bold text-[#065f46] uppercase tracking-wide">Path B: Invest in SIP</span>
-                </div>
-                <p className="text-xs text-[#71717a] mb-0.5">Monthly deposit for {simulatedTenure} mo:</p>
-                <p className="text-lg font-bold text-[#065f46] mb-3">{formatEMI(sipComparison.monthlyInvestment)}</p>
-                <div className="space-y-1.5 text-xs border-t border-emerald-100 pt-2 text-[#52525b]">
-                  <div className="flex justify-between">
-                    <span>Total principal saved:</span>
-                    <span className="font-semibold text-[#18181b]">{formatCurrency(sipComparison.totalInvested, true)}</span>
+                {/* Side-by-Side Comparison */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                  {/* Option A: Borrow */}
+                  <div className="bg-white rounded-xl p-4 border border-red-200 shadow-xs">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <span className="w-4 h-4 bg-red-100 text-red-700 rounded-full flex items-center justify-center text-xs font-bold border border-red-200">✕</span>
+                      <span className="text-xs font-bold text-red-800 uppercase tracking-wide">Path A: Take the Loan</span>
+                    </div>
+                    <p className="text-xs text-[#71717a] mb-0.5">Monthly loan payment ({formatLakhs(sipPrincipal)} at {simulatedTenure} mo):</p>
+                    <p className="text-lg font-bold text-red-600 mb-3">{formatEMI(sipComparison.monthlyInvestment)}</p>
+                    <div className="space-y-1.5 text-xs border-t border-red-100 pt-2 text-[#52525b]">
+                      <div className="flex justify-between">
+                        <span>Total cash paid:</span>
+                        <span className="font-semibold text-[#18181b]">{formatCurrency(sipLoanCost.totalOutflow, true)}</span>
+                      </div>
+                      <div className="flex justify-between text-red-600">
+                        <span>Interest lost forever:</span>
+                        <span className="font-semibold">-{formatCurrency(sipLoanCost.totalInterest, true)}</span>
+                      </div>
+                      <div className="flex justify-between pt-1 border-t border-dashed border-red-200">
+                        <span>Net wealth created:</span>
+                        <span className="font-bold text-[#71717a]">₹0</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex justify-between text-[#065f46]">
-                    <span>Compounding returns:</span>
-                    <span className="font-semibold">+{formatCurrency(sipComparison.wealthGain, true)}</span>
-                  </div>
-                  <div className="flex justify-between pt-1 border-t border-dashed border-emerald-200 text-[#065f46]">
-                    <span className="font-bold">Portfolio accumulated:</span>
-                    <span className="font-extrabold text-base">{formatCurrency(sipComparison.futureValue, true)}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
 
-            {/* Wealth Gap Insight Callout */}
-            <div className="bg-[#e6f4ec] text-[#064e3b] rounded-xl p-4 flex items-start gap-3 shadow-xs border border-[#a7f3d0]">
-              <div className="text-2xl mt-0.5">💡</div>
-              <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-[#065f46] mb-0.5">The Opportunity Gap (Illustrative)</h4>
-                <p className="text-xs leading-relaxed text-[#064e3b]">
-                  Under these assumptions (at {sipReturnPct}% p.a.), investing this EMI builds an estimated <strong>{formatCurrency(sipComparison.futureValue, true)}</strong> portfolio while avoiding <strong>{formatCurrency(sipLoanCost.totalInterest, true)}</strong> in loan interest.
-                  This shows an illustrative difference of <span className="underline font-bold text-[#065f46] text-sm">{formatCurrency(sipComparison.netWealthDifference, true)}</span> over {simulatedTenure} months. Not guaranteed; market returns vary and this does not affect your borrowing recommendation.
-                </p>
+                  {/* Option B: Invest */}
+                  <div className="bg-white rounded-xl p-4 border border-emerald-300 shadow-xs">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <span className="w-4 h-4 bg-emerald-100 text-[#065f46] rounded-full flex items-center justify-center text-xs font-bold border border-emerald-200">✓</span>
+                      <span className="text-xs font-bold text-[#065f46] uppercase tracking-wide">Path B: Invest in SIP</span>
+                    </div>
+                    <p className="text-xs text-[#71717a] mb-0.5">Monthly deposit for {simulatedTenure} mo:</p>
+                    <p className="text-lg font-bold text-[#065f46] mb-3">{formatEMI(sipComparison.monthlyInvestment)}</p>
+                    <div className="space-y-1.5 text-xs border-t border-emerald-100 pt-2 text-[#52525b]">
+                      <div className="flex justify-between">
+                        <span>Total principal saved:</span>
+                        <span className="font-semibold text-[#18181b]">{formatCurrency(sipComparison.totalInvested, true)}</span>
+                      </div>
+                      <div className="flex justify-between text-[#065f46]">
+                        <span>Compounding returns:</span>
+                        <span className="font-semibold">+{formatCurrency(sipComparison.wealthGain, true)}</span>
+                      </div>
+                      <div className="flex justify-between pt-1 border-t border-dashed border-emerald-200 text-[#065f46]">
+                        <span className="font-bold">Portfolio accumulated:</span>
+                        <span className="font-extrabold text-base">{formatCurrency(sipComparison.futureValue, true)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Wealth Gap Insight Callout */}
+                <div className="bg-[#e6f4ec] text-[#064e3b] rounded-xl p-4 flex items-start gap-3 shadow-xs border border-[#a7f3d0]">
+                  <div className="text-2xl mt-0.5">💡</div>
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-[#065f46] mb-0.5">The Opportunity Gap (Illustrative)</h4>
+                    <p className="text-xs leading-relaxed text-[#064e3b]">
+                      Illustrative modeled difference under these assumptions (at {sipReturnPct}% p.a.): investing this EMI builds an estimated <strong>{formatCurrency(sipComparison.futureValue, true)}</strong> portfolio while avoiding <strong>{formatCurrency(sipLoanCost.totalInterest, true)}</strong> in loan interest.
+                      This shows an illustrative modeled difference of <span className="underline font-bold text-[#065f46] text-sm">{formatCurrency(sipComparison.netWealthDifference, true)}</span> over {simulatedTenure} months. Not guaranteed; market returns vary and this does not affect your borrowing recommendation.
+                    </p>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Stress Test */}
@@ -1106,7 +1210,7 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[#52525b]">
                   <div className="bg-[#faf7f2] p-3 rounded-lg border border-[#eae3d9]">
                     <p className="font-bold text-[#18181b] mb-1.5 flex items-center gap-1">
-                      <span>✓</span> Confirmed Facts &amp; Inputs (From You):
+                      <span>✓</span> Reported Inputs (What you told us):
                     </p>
                     <ul className="space-y-1 text-[11px]">
                       <li>• <strong>Income:</strong> {formatCurrency(profile.claimedTotalIncome, true)}/mo ({profile.incomeType === 'salaried' ? 'Salaried' : profile.incomeType === 'self_employed' ? 'Self-Employed' : 'Informal / Gig'})</li>
@@ -1123,7 +1227,7 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                       <li>• <strong>Living Essentials:</strong> {profile.essentialExpensesIsDefaulted ? `Assumed at ${profile.incomeType === 'salaried' ? '50%' : '65%'} standard living benchmark` : `${formatCurrency(profile.essentialExpenses, true)}/mo (reported)`}</li>
                       <li>• <strong>Fair Rate Ceiling:</strong> {fairRate.fairRateHigh.toFixed(1)}% p.a. used as conservative barrier for sizing safe principal</li>
                       <li>• <strong>All-in Fees:</strong> ~{effectiveCost.processingFeePct}% processing fee amortized in effective annualized cost</li>
-                      <li>• <strong>High-Cost Debt:</strong> {profile.highCostDebtEMIIsDefaulted ? 'Monthly payment assumed at 25% of outstanding balance' : 'None / Confirmed'}</li>
+                      <li>• <strong>High-Cost Debt:</strong> {profile.highCostDebtEMIIsDefaulted ? 'Monthly payment assumed at 25% of outstanding balance' : 'None / User-provided'}</li>
                     </ul>
                   </div>
                 </div>
