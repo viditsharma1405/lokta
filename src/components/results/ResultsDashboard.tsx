@@ -810,60 +810,6 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                 Why your safe ceiling is {formatEMI(safeCapacity.safeEMI)} and not higher: It reserves exactly {(safeCapacity.adjustedRetentionFactor * 100).toFixed(0)}% of your {formatCurrency(safeCapacity.disposableCashFlow, true)} disposable monthly surplus (after essentials &amp; existing debt) so you never risk default.
               </p>
             </div>
-
-            {/* Section 5 & 6: Clearly Labeled Tenure Simulator */}
-            <div className="border-t border-[#eae3d9] pt-4">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 mb-2">
-                <div>
-                  <h4 className="text-xs font-bold text-[#18181b] uppercase tracking-wider">
-                    Tenure Simulator — Safe-Amount Scenario
-                  </h4>
-                  <p className="text-xs text-[#71717a]">
-                    Based on your calculated safe borrowing amount of <strong>{formatLakhs(safeCapacity.recommendedAmount)}</strong> (at {effectiveInterestRate.toFixed(1)}% fair mid-rate)
-                  </p>
-                </div>
-                <span className="text-[11px] text-[#5a2045] font-semibold bg-[#faf4f8] px-2 py-0.5 rounded border border-[#e8d0e0] self-start sm:self-auto">
-                  Click tenure to simulate
-                </span>
-              </div>
-              <p className="text-[11px] text-[#71717a] mb-3 leading-relaxed">
-                Note: The simulation tiles below show what you would pay if you borrow your <strong>calculated safe amount ({formatLakhs(safeCapacity.recommendedAmount)})</strong>, NOT your requested loan ({formatLakhs(requestedAmount)}). Clicking any tenure also updates your requested loan's EMI and total repayment above.
-              </p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {tenureOpts.map(t => {
-                  const simSafeEMI = computeEMI(safeCapacity.recommendedAmount, effectiveInterestRate, t);
-                  const simSafeTotal = simSafeEMI * t;
-                  const isDefault = t === defaultTenure;
-                  const isSimulated = t === simulatedTenure;
-                  const isAboveCeiling = simSafeEMI > safeCapacity.safeEMI;
-                  return (
-                    <button
-                      type="button"
-                      key={t}
-                      onClick={() => setSimulatedTenure(t)}
-                      className={`rounded-lg p-3 text-left border transition-all cursor-pointer overflow-hidden ${
-                        isSimulated ? 'border-[#5a2045] ring-2 ring-[#5a2045] bg-[#faf4f8]' :
-                        isDefault ? 'border-[#e8d0e0] bg-[#faf7f2]' :
-                        isAboveCeiling ? 'border-red-200 bg-red-50' :
-                        'border-[#eae3d9] bg-white hover:border-[#5a2045]'
-                      }`}
-                    >
-                      <div className="flex justify-between items-center text-[10px] text-[#71717a] mb-1">
-                        <span className="font-bold text-[#18181b]">{t} months</span>
-                        {isSimulated && <span className="text-[9px] bg-[#5a2045] text-white px-1.5 py-0.2 rounded font-bold">Active</span>}
-                        {!isSimulated && isDefault && <span className="text-[9px] text-[#5a2045] font-semibold">Def</span>}
-                      </div>
-                      <p className="text-[10px] text-[#71717a]">Safe-amount scenario:</p>
-                      <p className={`text-sm sm:text-base font-bold tracking-tight truncate ${isSimulated ? 'text-[#5a2045]' : isDefault ? 'text-[#5a2045]' : isAboveCeiling ? 'text-red-600' : 'text-[#18181b]'}`}>
-                        {formatEMI(simSafeEMI)}
-                      </p>
-                      <p className="text-xs text-[#71717a] mt-0.5 truncate">Total repayment: {formatCurrency(simSafeTotal, true)}</p>
-                      {isAboveCeiling && <p className="text-xs text-red-600 font-medium mt-0.5">↑ exceeds safe ceiling</p>}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
           </div>
 
 
