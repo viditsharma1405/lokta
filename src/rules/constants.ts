@@ -26,9 +26,11 @@ export const LTV = {
   lapCommercial: 0.60,    // External fact (iServeFinancial, conservative end of 60–65%)
 } as const;
 
-// ── Collateral Haircut ────────────────────────────────────────────────────────
-// Source: My judgement (self-reported values are unverified)
-export const COLLATERAL_HAIRCUT = 0.20;
+// ── Collateral / Illustrative LTV Assumptions ────────────────────────────────
+// Source: Simplified assumptions / judgement (market norms).
+// Note: A flat 20% valuation haircut is NOT an industry-wide standard and is removed.
+// Estimated collateral capacity = Borrower-reported collateral value × illustrative LTV.
+// Labeled as a borrower-side estimate; actual lender valuation and applicable LTV may differ.
 
 // ── Documentation Recognition Tiers for Lender-Likely Income ──────────────────
 // Source: Product judgement for a borrower-side assessment (NOT an RBI mandate).

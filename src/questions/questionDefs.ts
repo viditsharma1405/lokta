@@ -516,8 +516,8 @@ export const Q_GOLD_COLLATERAL: QuestionDef = Q_COLLATERAL_AVAILABLE;
 export const Q_COLLATERAL_VALUE: QuestionDef = {
   id: 'collateral_value',
   label: 'What is the estimated market value of your collateral asset?',
-  helpText: 'Self-reported estimate — property/gold valuation is unverified. Lenders apply an initial 20% haircut and regulatory LTV limits before sanction.',
-  whyWeAsk: 'Estimated Collateral Value × (1 − 20% Haircut) × LTV sets the maximum secured borrowing ceiling.',
+  helpText: 'Self-reported estimate — property/gold valuation is unverified. Actual lender valuation and applicable LTV may differ.',
+  whyWeAsk: 'Borrower-reported collateral value × illustrative LTV sets the estimated collateral-supported ceiling.',
   type: 'currency',
   placeholder: '45,00,000',
   prefix: '₹',
@@ -533,7 +533,7 @@ export const Q_COLLATERAL_VALUE: QuestionDef = {
     );
   },
   affects: ['lenderCapacity'],
-  reason: 'Estimated Collateral value × (1 − haircut) × LTV sets the LTV-supported borrowing ceiling.',
+  reason: 'Borrower-reported collateral value × illustrative LTV sets the estimated collateral-supported borrowing ceiling.',
   group: 'loan',
 };
 

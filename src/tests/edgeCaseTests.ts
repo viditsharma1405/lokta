@@ -347,7 +347,7 @@ const securedProfile: BorrowerProfile = {
   loanPurpose: 'business_expansion',
   collateral: {
     type: 'property_residential',
-    statedValue: 1000000, // 10L stated -> 20% haircut = 8L -> 70% LTV = 5.6L cap
+    statedValue: 1000000, // 10L stated -> 70% illustrative LTV = 7.0L cap (no arbitrary haircut)
   },
   existingEMI: 0,
   businessDebtEMI: 0,
@@ -357,7 +357,7 @@ const securedProfile: BorrowerProfile = {
 
 const securedLender12 = computeLenderCapacity(securedProfile, 11.5, 12);
 const securedLender84 = computeLenderCapacity(securedProfile, 11.5, 84);
-const ltvCap = 1000000 * 0.80 * 0.70; // 560,000
+const ltvCap = 1000000 * 0.70; // 700,000 (statedValue × illustrative LTV)
 
 assert('Tenure (Secured): FOIR amount at 84m exceeds 12m', securedLender84.foirSupportedAmount > securedLender12.foirSupportedAmount);
 assert('Tenure (Secured): FOIR amount at 84m exceeds LTV limit', securedLender84.foirSupportedAmount > ltvCap);

@@ -41,7 +41,7 @@ import {
   isQuestionActive,
 } from '../questions/questionDefs';
 import { PERSONA_PRIYA, PERSONA_RAVI, PERSONA_ANITA } from '../data/personas';
-import { LTV, COLLATERAL_HAIRCUT } from '../rules/constants';
+import { LTV } from '../rules/constants';
 import type { BorrowerProfile } from '../types/profile';
 
 let passCount = 0;
@@ -1037,8 +1037,13 @@ assert('Collateral 2: Commercial property LTV is 60%', LTV.lapCommercial === 0.6
 // 3. Gold LTV tiered
 assert('Collateral 3: Gold LTV tiered (85%, 80%, 75%)', LTV.gold.upTo2L === 0.85 && LTV.gold.twoTo10L === 0.80 && LTV.gold.above10L === 0.75);
 
-// 4. Collateral valuation haircut: 20%
-assert('Collateral 4: Collateral valuation haircut is exactly 20%', COLLATERAL_HAIRCUT === 0.20);
+// 4. Collateral valuation haircut: removed (no arbitrary 20% haircut; evaluates as statedValue * illustrative LTV)
+const residentialColTest: BorrowerProfile = {
+  ...PERSONA_RAVI,
+  collateral: { type: 'property_residential', statedValue: 1000000, willingToPledge: 'yes' },
+};
+const resCap = computeLenderCapacity(residentialColTest, 11.5, 84);
+assert('Collateral 4: No arbitrary haircut; LTV capacity is statedValue × illustrative LTV (10L × 70% = 7L)', resCap.ltvSupportedAmount === 700000);
 
 // 5. Missing collateral value: no fabricated LTV
 const bizMissingCollateralVal: BorrowerProfile = {

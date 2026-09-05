@@ -17,6 +17,12 @@ dist-ssr
 !.vscode/extensions.json
 .idea
 .DS_Store
+__MACOSX
+*.zip
+*.tar.gz
+.env
+.env.*
+*.tsbuildinfo
 *.suo
 *.ntvs*
 *.njsproj

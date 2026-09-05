@@ -5,7 +5,7 @@
 import type { BorrowerProfile } from '../types/profile';
 import type { LenderCapacityResult } from '../types/calculations';
 import type { ConfidenceLevel } from '../types/results';
-import { FOIR, LTV, COLLATERAL_HAIRCUT, TENURE_DEFAULTS } from '../rules/constants';
+import { FOIR, LTV, TENURE_DEFAULTS } from '../rules/constants';
 import { principalFromEMI } from './emi';
 import { isSecuredProduct, computeEligibleIncomeLender } from './income';
 
@@ -86,8 +86,8 @@ export function computeLenderCapacity(
   if (secured && profile.collateral.statedValue !== null) {
     const ltv = getLTV(profile.collateral.type, profile.collateral.statedValue);
     if (ltv !== null) {
-      const adjustedCollateralValue = profile.collateral.statedValue * (1 - COLLATERAL_HAIRCUT);
-      ltvSupportedAmount = adjustedCollateralValue * ltv;
+      // Borrower-reported collateral value × illustrative LTV (no arbitrary haircut)
+      ltvSupportedAmount = profile.collateral.statedValue * ltv;
 
       if (foirSupportedAmount <= ltvSupportedAmount) {
         bindingConstraint = 'foir';
@@ -179,7 +179,7 @@ export function computeLenderCapacity(
 
   if (ltvSupportedAmount !== null) {
     drivers.push(
-      `Collateral (after 20% haircut) × LTV: ₹${Math.round(ltvSupportedAmount).toLocaleString('en-IN')} — ${bindingConstraint === 'ltv' ? 'binding' : 'not binding'}`
+      `Borrower-reported collateral × illustrative LTV: ₹${Math.round(ltvSupportedAmount).toLocaleString('en-IN')} (Actual lender valuation and applicable LTV may differ) — ${bindingConstraint === 'ltv' ? 'binding' : 'not binding'}`
     );
   }
 
