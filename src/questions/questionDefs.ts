@@ -53,9 +53,9 @@ export const Q_INCOME_TYPE: QuestionDef = {
   whyWeAsk: 'Salaried, self-employed, and informal borrowers face different lender FOIR limits (50% vs 45% vs 35%) and retention bases.',
   type: 'select',
   options: [
-    { value: 'salaried', label: 'Salaried (Regular corporate / payroll employee)' },
-    { value: 'self_employed', label: 'Self-employed / Business owner (Kirana, trade, enterprise)' },
-    { value: 'informal', label: 'Informal / Gig / Variable (Daily wage, freelance, delivery/rides)' },
+    { value: 'salaried', label: 'Salaried' },
+    { value: 'self_employed', label: 'Self-employed / Business owner' },
+    { value: 'informal', label: 'Informal / Gig / Variable' },
   ],
   required: true,
   affects: ['lenderCapacity', 'safeCapacity', 'fairRate', 'productRoute'],
