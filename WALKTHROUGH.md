@@ -59,3 +59,21 @@ Recording:
 
 5. **Local Language Accessibility (Indic Localization)**:
    - Provide full vernacular language support (Hindi, Tamil, Telugu, Marathi, Bengali) and voice-assisted input to empower non-English speaking semi-urban borrowers.
+
+---
+
+## What I Would Cut
+
+*(Features and complexities that could be removed to create an even more ruthless, high-conversion, and focused borrower tool)*
+
+1. **SIP Wealth Opportunity Comparison**:
+   - *Why cut*: While contrasting loan interest with 12% compounding SIP wealth is an eye-opening educational exercise, it risks distracting borrowers from the immediate credit negotiation task. In a minimal version, removing the SIP calculator keeps 100% of attention on the four core outputs and the Negotiation Card.
+
+2. **Granular Live Scenario Sliders in Results**:
+   - *Why cut*: Allowing borrowers to freely adjust monthly income and existing EMIs on the results screen is great for edge-case exploration, but can lead borrowers to "fiddle" with numbers until they see an amount they like, defeating the discipline of self-assessment. Locking the results to answered inputs and requiring a structured questionnaire re-take enforces financial honesty.
+
+3. **Dual Secured-vs-Unsecured Alternative Routing**:
+   - *Why cut*: Displaying secondary alternative products (e.g. Gold Loan alternative alongside a Personal Loan) adds cognitive load to borrowers who are already anxious about credit. A simpler version would present only the single optimal route determined by the engine.
+
+4. **Multi-Category Expense Breakdown**:
+   - *Why cut*: Asking borrowers to separate rent, utilities, and lifestyle spending creates friction. Relying on a single total monthly expense figure paired with regional demographic benchmark floors produces equivalent calculation safety with significantly higher questionnaire completion rates.
