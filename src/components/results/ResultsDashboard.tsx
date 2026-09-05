@@ -593,9 +593,6 @@ export default function ResultsDashboard({ profile, output: _output, personaName
                   <span className="font-bold text-[#5a2045]">{formatLakhs(simulatedScenario.lenderCapacity.lenderLikelyAmount)}</span>
                 </div>
               )}
-              <div className="mt-2 text-[10px] text-[#71717a] bg-[#faf7f2] p-1.5 rounded border border-[#eae3d9] italic">
-                Product judgement — not an RBI-mandated haircut.
-              </div>
               <Expandable title="How this was calculated">
                 {lenderCapacity.drivers.map((d, i) => <p key={i}>• {d}</p>)}
               </Expandable>
