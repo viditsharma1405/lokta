@@ -917,6 +917,16 @@ export default function ResultsDashboard({ profile, output: _output, personaName
               <p className="text-[#71717a] mt-1">
                 Why your safe ceiling is {formatEMI(safeCapacity.safeEMI)} and not higher: It reserves exactly {(safeCapacity.adjustedRetentionFactor * 100).toFixed(0)}% of your {formatCurrency(safeCapacity.disposableCashFlow, true)} disposable monthly surplus (after essentials &amp; existing debt) to leave a buffer for unexpected costs and reduce payment stress.
               </p>
+              {safeCapacity.adjustments.some(a => a.name.includes('>30%')) && (
+                <p className="text-[#5a2045] mt-1.5 font-medium">
+                  More than 30% of your income varies month to month, so we use a slightly larger affordability buffer.
+                </p>
+              )}
+              {profile.variableIncomeComponent === 'unknown' && (
+                <p className="text-[#71717a] mt-1.5">
+                  Income volatility was marked as not sure, so we preserve standard cash flow buffers without assuming low volatility.
+                </p>
+              )}
             </div>
 
 

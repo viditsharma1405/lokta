@@ -36,6 +36,28 @@ export function buildProvenanceSummary(
         : 'Based on your reported earnings range and tenure.',
   });
 
+  // Variable Income Component (if provided)
+  if (profile.variableIncomeComponent !== undefined) {
+    const compLabel =
+      profile.variableIncomeComponent === 'low' ? '0–10%' :
+      profile.variableIncomeComponent === 'moderate' ? '10–30%' :
+      profile.variableIncomeComponent === 'high' ? 'More than 30%' :
+      'Not sure';
+
+    items.push({
+      id: 'variable_income_component',
+      label: 'Variable Income Component',
+      value: compLabel,
+      tag: (profile.variableIncomeComponent === 'unknown' ? 'ASSUMPTION' : 'USER_ANSWER') as ProvenanceTag,
+      explanation:
+        profile.variableIncomeComponent === 'high'
+          ? 'Reported by you as >30% variable; triggers a derived −5pp safe retention buffer.'
+          : profile.variableIncomeComponent === 'unknown'
+          ? 'Reported as not sure; preserved as unknown to widen confidence bounds without penalty.'
+          : 'Reported by you as ≤30% variable; no volatility buffer needed.',
+    });
+  }
+
   // 2. Documented Income
   items.push({
     id: 'documented_income',

@@ -16,6 +16,7 @@ import {
   Q_CREDIT_SCORE,
   Q_EMPLOYMENT_TENURE,
   Q_VARIABLE_INCOME_SHARE,
+  Q_VARIABLE_INCOME_COMPONENT,
   Q_BUSINESS_TENURE,
   Q_SE_DOC_TYPE,
   Q_DOCUMENTED_INCOME_SE,
@@ -233,6 +234,7 @@ export default function Questionnaire({ onComplete }: QuestionnaireProps) {
         delete updated.business_tenure;
         delete updated.employment_tenure;
         delete updated.variable_income_share;
+        delete updated.variable_income_component;
         delete updated.collateral_available;
         delete updated.gold_collateral;
         delete updated.collateral_value;
@@ -284,6 +286,15 @@ export default function Questionnaire({ onComplete }: QuestionnaireProps) {
     // Core Income & Stability
     list.push(Q_MONTHLY_INCOME);
     list.push(Q_INCOME_STABILITY);
+
+    // Variable income component for self-employed, gig, informal
+    if (
+      answers.income_type === 'self_employed' ||
+      answers.income_type === 'informal' ||
+      answers.income_type === 'mixed'
+    ) {
+      list.push(Q_VARIABLE_INCOME_COMPONENT);
+    }
 
     // Variable pay follow-up if salaried with fluctuating earnings
     if (

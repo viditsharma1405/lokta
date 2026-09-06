@@ -57,6 +57,7 @@ export const PERSONA_PRIYA: BorrowerProfile = {
 
   // Employment
   employmentTenure: 'gt_5yr',
+  variableIncomeComponent: 'low',        // DEMO FACT: Salaried steady take-home (0–10% variable)
   variableIncomeShare: 0,
 
   isProductiveLoan: false,
@@ -115,6 +116,7 @@ export const PERSONA_RAVI: BorrowerProfile = {
 
   // Business
   businessTenure: 14,
+  variableIncomeComponent: 'moderate',   // DEMO ASSUMPTION: 10–30% seasonal variation in kirana business takings
 
   isProductiveLoan: true,
   productiveReturnEstimate: undefined,   // not stated — display only
@@ -175,6 +177,7 @@ export const PERSONA_ANITA: BorrowerProfile = {
   emergencySavingsMonths: null,          // genuinely unknown
 
   upcomingLargeExpense: false,
+  variableIncomeComponent: 'high',       // DEMO ASSUMPTION: Gig delivery & tailoring has >30% variable income
   variableIncomeShare: 0.8,              // gig income is highly variable
 
   isProductiveLoan: false,

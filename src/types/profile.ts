@@ -9,6 +9,7 @@ export type IncomeStability = 'stable' | 'moderate' | 'unstable' | 'unknown';
 export type DocumentationStatus = 'full' | 'partial' | 'none' | 'unknown';
 export type RepaymentHistory = 'clean' | 'bounce' | 'unknown';
 export type CreditScoreStatus = 'known' | 'thin_file' | 'unknown';
+export type VariableIncomeComponent = 'low' | 'moderate' | 'high' | 'unknown';
 export type LoanPurpose =
   | 'personal_event'      // wedding, travel
   | 'home_purchase'
@@ -101,6 +102,9 @@ export interface BorrowerProfile {
   // Employment context
   employmentTenure?: 'lt_6mo' | '6mo_1yr' | '1_3yr' | '3_5yr' | 'gt_5yr';
   businessTenure?: number;           // years in business
+
+  // Variable income component (self-employed / gig / informal / salaried)
+  variableIncomeComponent?: VariableIncomeComponent;
 
   // Variable income (salaried)
   variableIncomeShare?: number;      // fraction (0–1)

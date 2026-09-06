@@ -355,6 +355,28 @@ export const SALARIED_QUESTIONS: QuestionDef[] = [
   Q_VARIABLE_INCOME_SHARE,
 ];
 
+// Q: Variable Income Component (Self-Employed / Gig / Informal)
+export const Q_VARIABLE_INCOME_COMPONENT: QuestionDef = {
+  id: 'variable_income_component',
+  label: 'How much of your monthly income typically varies month to month?',
+  helpText: 'Variable income component from seasonal demand, fluctuating client billing, commissions, or tips.',
+  whyWeAsk: 'If more than 30% of your earnings varies month to month, we apply a safety buffer so lean months are protected.',
+  type: 'select',
+  options: [
+    { value: '0_10', label: '0–10%' },
+    { value: '10_30', label: '10–30%' },
+    { value: 'gt_30', label: 'More than 30%' },
+    { value: 'unknown', label: 'Not sure' },
+  ],
+  condition: answers =>
+    answers.income_type === 'self_employed' ||
+    answers.income_type === 'informal' ||
+    answers.income_type === 'mixed',
+  affects: ['safeCapacity'],
+  reason: 'Variable income >30% triggers an existing −5pp safe retention adjustment. "Not sure" preserves unknown without penalty.',
+  group: 'income',
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // BRANCH B & C: SELF-EMPLOYED / BUSINESS ADAPTIVE FOLLOW-UPS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -437,6 +459,7 @@ export const Q_DOCUMENTED_INCOME_ITR: QuestionDef = {
 
 export const SELF_EMPLOYED_QUESTIONS: QuestionDef[] = [
   Q_BUSINESS_TENURE,
+  Q_VARIABLE_INCOME_COMPONENT,
   Q_SE_DOC_TYPE,
   Q_DOCUMENTED_INCOME_SE,
   Q_DOCUMENTED_INCOME_ITR,
@@ -482,6 +505,7 @@ export const Q_INFORMAL_SUPPORTED_AMOUNT: QuestionDef = {
 };
 
 export const INFORMAL_QUESTIONS: QuestionDef[] = [
+  Q_VARIABLE_INCOME_COMPONENT,
   Q_INFORMAL_RECORDS,
   Q_INFORMAL_SUPPORTED_AMOUNT,
 ];

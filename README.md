@@ -60,7 +60,7 @@ Visit `http://localhost:5173` to explore the application or load pre-configured 
 The project includes an extensive automated test suite covering regulatory math, persona baselines, edge cases, and regression verifications:
 
 ```bash
-# Run test suite (357 passing tests across Persona, Edge Case, and Hardening suites)
+# Run test suite (369 passing tests across Persona, Edge Case, and Hardening suites)
 npm test
 
 # Run linter (oxlint)

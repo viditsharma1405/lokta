@@ -15,6 +15,7 @@ import type {
   CreditScoreStatus,
   CollateralType,
   LoanPurpose,
+  VariableIncomeComponent,
 } from '../types/profile';
 import {
   computeClaimedIncome,
@@ -345,15 +346,43 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
   // Upcoming large expense
   const upcomingLargeExpense = str(answers.upcoming_large_expense) === 'yes';
 
+  // Variable income component
+  const varCompRaw = answers.variable_income_component ?? answers.variableIncomeComponent;
+  let variableIncomeComponent: VariableIncomeComponent | undefined;
+
+  if (varCompRaw !== undefined && varCompRaw !== null && varCompRaw !== '') {
+    const s = String(varCompRaw).trim().toLowerCase();
+    if (s === '0_10' || s === '0-10%' || s === '0–10%' || s === 'low') {
+      variableIncomeComponent = 'low';
+    } else if (s === '10_30' || s === '10-30%' || s === '10–30%' || s === 'moderate') {
+      variableIncomeComponent = 'moderate';
+    } else if (s === 'gt_30' || s === '>30%' || s === 'more than 30%' || s === 'high') {
+      variableIncomeComponent = 'high';
+    } else if (s === 'unknown' || s === 'not_sure' || s === 'not sure') {
+      variableIncomeComponent = 'unknown';
+    }
+  }
+
   // Variable income share
   const variableRaw = num(answers.variable_income_share);
   let variableIncomeShare = 0;
-  if (variableRaw !== null) {
+  if (variableIncomeComponent === 'high') {
+    variableIncomeShare = 0.50;
+  } else if (variableIncomeComponent === 'moderate') {
+    variableIncomeShare = 0.20;
+  } else if (variableIncomeComponent === 'low') {
+    variableIncomeShare = 0.05;
+  } else if (variableIncomeComponent === 'unknown') {
+    variableIncomeShare = 0;
+  } else if (variableRaw !== null) {
     variableIncomeShare = variableRaw / 100;
+    variableIncomeComponent = variableIncomeShare > 0.30 ? 'high' : variableIncomeShare > 0.10 ? 'moderate' : 'low';
   } else if (incomeStability === 'moderate') {
     variableIncomeShare = 0.15;
+    variableIncomeComponent = 'moderate';
   } else if (incomeStability === 'unstable') {
     variableIncomeShare = 0.5;
+    variableIncomeComponent = 'high';
   }
 
   // Productive return (display only)
@@ -392,6 +421,7 @@ export function buildProfileFromAnswers(answers: Answers): BorrowerProfile {
     upcomingLargeExpense,
     employmentTenure: (str(answers.employment_tenure) as BorrowerProfile['employmentTenure']) || undefined,
     businessTenure,
+    variableIncomeComponent,
     variableIncomeShare,
     isProductiveLoan,
   };

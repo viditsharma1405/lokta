@@ -22,6 +22,7 @@ import { computeFairRate } from '../engine/fairRate';
 import { computeEMI, totalRepayment, totalInterest, computeSIPComparison } from '../engine/emi';
 import { computeEffectiveCostForProfile } from '../engine/effectiveCost';
 import { computeProductRoute } from '../engine/productRoute';
+import { computeSafeCapacity } from '../engine/safeCapacity';
 import { buildProfileFromAnswers, type Answers } from '../questions/questionEngine';
 import {
   Q_BUSINESS_TENURE,
@@ -34,6 +35,7 @@ import {
   Q_EMPLOYMENT_TENURE,
   Q_INFORMAL_RECORDS,
   Q_VARIABLE_INCOME_SHARE,
+  Q_VARIABLE_INCOME_COMPONENT,
   Q_CO_APPLICANT_INCOME,
   Q_OTHER_EARNER,
   EXPENSE_BUCKET_QUESTION,
@@ -1211,6 +1213,147 @@ assert(
   outPersonalComm.lenderCapacity.bindingConstraint === 'ltv' &&
   outPersonalComm.lenderCapacity.lenderLikelyAmount <= 1800000
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Q. VARIABLE INCOME COMPONENT & ADAPTIVE SAFE RETENTION TESTS (TESTS 1–7)
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n── Q. Variable Income Component & Adaptive Safe Retention Tests ──');
+
+// Base self-employed profile with documented ITR (steady, 40% base retention)
+// ₹60,000 claimed income, ₹30,000 living expenses, ₹0 existing debt
+// Disposable surplus = ₹30,000. Base retention = 40%.
+const baseSEVarProfile: BorrowerProfile = {
+  ...PERSONA_RAVI,
+  coApplicantIncome: 0,
+  eligibleIncomeSafe: 60000,
+  claimedTotalIncome: 60000,
+  essentialExpenses: 30000,
+  essentialExpensesIsDefaulted: false,
+  existingEMI: 0,
+  existingEMIIsDefaulted: false,
+  businessDebtEMI: 0,
+  highCostDebtEMI: 0,
+  highCostDebtEMIIsDefaulted: false,
+  highCostDebtOutstanding: 0,
+  recentBounce: false,
+  dependents: 0,
+  hasOtherEarner: false,
+  emergencySavingsMonths: null,
+  upcomingLargeExpense: false,
+};
+
+// TEST 1 — 0–10%
+// Variable component = 0–10%
+// Expected: no -5pp adjustment
+const varT1Profile: BorrowerProfile = {
+  ...baseSEVarProfile,
+  variableIncomeComponent: 'low',
+};
+const varT1Safe = computeSafeCapacity(varT1Profile, 12);
+assert(
+  'TEST 1: Variable component = 0–10% → no -5pp adjustment (base 40% retention preserved)',
+  !varT1Safe.adjustments.some(a => a.name.includes('>30%')) &&
+  varT1Safe.adjustedRetentionFactor === 0.40
+);
+
+// TEST 2 — 10–30%
+// Variable component = 10–30%
+// Expected: no -5pp adjustment
+const varT2Profile: BorrowerProfile = {
+  ...baseSEVarProfile,
+  variableIncomeComponent: 'moderate',
+};
+const varT2Safe = computeSafeCapacity(varT2Profile, 12);
+assert(
+  'TEST 2: Variable component = 10–30% → no -5pp adjustment (base 40% retention preserved)',
+  !varT2Safe.adjustments.some(a => a.name.includes('>30%')) &&
+  varT2Safe.adjustedRetentionFactor === 0.40
+);
+
+// TEST 3 — >30%
+// Variable component = >30%
+// Expected: existing -5pp adjustment applies exactly once
+const varT3Profile: BorrowerProfile = {
+  ...baseSEVarProfile,
+  variableIncomeComponent: 'high',
+};
+const varT3Safe = computeSafeCapacity(varT3Profile, 12);
+const varT3AdjustmentsCount = varT3Safe.adjustments.filter(a => a.name.includes('>30%')).length;
+assert(
+  'TEST 3: Variable component = >30% → existing -5pp adjustment applies exactly once (40% - 5% = 35%)',
+  varT3AdjustmentsCount === 1 &&
+  varT3Safe.adjustedRetentionFactor === 0.35 &&
+  varT3Safe.adjustments.find(a => a.name.includes('>30%'))?.value === -0.05
+);
+
+// TEST 4 — Not sure
+// Variable component = unknown
+// Expected: no -5pp adjustment, unknown is preserved, confidence/unknown behavior is respected
+const varT4Profile: BorrowerProfile = {
+  ...baseSEVarProfile,
+  variableIncomeComponent: 'unknown',
+};
+const varT4Safe = computeSafeCapacity(varT4Profile, 12);
+assert(
+  'TEST 4: Variable component = unknown → no -5pp adjustment (40% retention)',
+  !varT4Safe.adjustments.some(a => a.name.includes('>30%')) &&
+  varT4Safe.adjustedRetentionFactor === 0.40
+);
+assert(
+  'TEST 4: Variable component = unknown → unknown preserved and confidence widens (MEDIUM confidence)',
+  varT4Profile.variableIncomeComponent === 'unknown' &&
+  varT4Safe.confidence === 'MEDIUM'
+);
+
+// TEST 5 — Salaried borrower
+// Expected: variable-income question is not shown in the normal stable salaried flow
+const salariedStableAnswers: Answers = {
+  income_type: 'salaried',
+  monthly_income: 100000,
+  income_stability: 'stable',
+  loan_purpose: 'personal_event',
+};
+assert(
+  'TEST 5: Salaried stable borrower → variable-income question is NOT shown',
+  !isQuestionActive(Q_VARIABLE_INCOME_COMPONENT, salariedStableAnswers)
+);
+
+// TEST 6 — Self-employed borrower
+// Expected: variable-income question is shown
+const seVarAnswers: Answers = {
+  income_type: 'self_employed',
+  monthly_income: 60000,
+  income_stability: 'stable',
+  loan_purpose: 'business_expansion',
+};
+assert(
+  'TEST 6: Self-employed borrower → variable-income question IS shown',
+  isQuestionActive(Q_VARIABLE_INCOME_COMPONENT, seVarAnswers)
+);
+
+// TEST 7 — Gig/informal borrower
+// Expected: variable-income question is shown
+const gigVarAnswers: Answers = {
+  income_type: 'informal',
+  monthly_income: 26000,
+  income_stability: 'unstable',
+  loan_purpose: 'vehicle',
+};
+assert(
+  'TEST 7: Gig/informal borrower → variable-income question IS shown',
+  isQuestionActive(Q_VARIABLE_INCOME_COMPONENT, gigVarAnswers)
+);
+
+// Questionnaire flow integration tests: Answers mapping into profile
+const answers0to10: Answers = { income_type: 'self_employed', monthly_income: 50000, variable_income_component: '0_10' };
+const answers10to30: Answers = { income_type: 'self_employed', monthly_income: 50000, variable_income_component: '10_30' };
+const answersGt30: Answers = { income_type: 'self_employed', monthly_income: 50000, variable_income_component: 'gt_30' };
+const answersUnknown: Answers = { income_type: 'self_employed', monthly_income: 50000, variable_income_component: 'unknown' };
+
+assert('Questionnaire flow: 0–10% answer maps to low variableIncomeComponent', buildProfileFromAnswers(answers0to10).variableIncomeComponent === 'low');
+assert('Questionnaire flow: 10–30% answer maps to moderate variableIncomeComponent', buildProfileFromAnswers(answers10to30).variableIncomeComponent === 'moderate');
+assert('Questionnaire flow: >30% answer maps to high variableIncomeComponent', buildProfileFromAnswers(answersGt30).variableIncomeComponent === 'high');
+assert('Questionnaire flow: Not sure answer maps to unknown variableIncomeComponent', buildProfileFromAnswers(answersUnknown).variableIncomeComponent === 'unknown');
 
 console.log('\n═══════════════════════════════════════════════════════════════');
 console.log(`HARDENING TEST SUITE SUMMARY: ${passCount} passed, ${failCount} failed`);

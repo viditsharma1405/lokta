@@ -187,7 +187,7 @@ foirSupportedAmount = principalFromEMI(availableNewEMI, fairRateMid, tenure)
 
 | What | Value | Why | Source or my judgement |
 |---|---|---|---|
-| **Variable Income > 30%** | −5 pp | Unreliable compensation fraction excluded from debt support | MY JUDGEMENT |
+| **Variable Income Adjustment** | >30% variable component → −5 pp safe-retention adjustment | Higher month-to-month income variability warrants a larger affordability buffer | MY JUDGEMENT / borrower-side modelling assumption |
 | **Emergency Savings < 1 Month** | −5 pp | Absence of liquid buffer makes borrower vulnerable to emergency shock | MY JUDGEMENT |
 | **Emergency Savings > 6 Months** | +5 pp | Substantial liquid buffer allows slightly higher debt-service tolerance | MY JUDGEMENT |
 | **> 2 Dependents (No Other Earner)**| −5 pp | High dependent load increases nondiscretionary cash expenditure risk | MY JUDGEMENT |
@@ -195,6 +195,12 @@ foirSupportedAmount = principalFromEMI(availableNewEMI, fairRateMid, tenure)
 | **High-Cost Debt Present (Sub-critical)**| −10 pp | Ongoing high interest payments drain liquidity | MY JUDGEMENT |
 | **Upcoming Large Expense** | −5 pp | Planned capital outflow temporarily compresses debt-service buffer | MY JUDGEMENT |
 | **Retention Clamp Limits** | 10% (Floor) to 55% (Cap) | Ensures retention neither drops to zero nor exceeds prudent safety bounds | MY JUDGEMENT |
+
+**Variable Income Question Mapping**:
+- `0–10%`: No adjustment (treated as stable month-to-month cash flow)
+- `10–30%`: No adjustment (normal business / seasonal variation)
+- `>30%` (More than 30%): −5 pp safe-retention adjustment (triggers volatility buffer)
+- `Not sure`: Unknown (preserved without arbitrary penalty; widens confidence uncertainty)
 
 ### Presentation Headroom
 

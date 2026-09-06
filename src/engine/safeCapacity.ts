@@ -79,11 +79,15 @@ export function computeSafeCapacity(
   // Adjustments
   const adjustments: Array<{ name: string; value: number; reason: string }> = [];
 
-  if ((profile.variableIncomeShare ?? 0) > 0.30) {
+  const hasHighVariableIncome =
+    profile.variableIncomeComponent === 'high' ||
+    (profile.variableIncomeComponent === undefined && (profile.variableIncomeShare ?? 0) > 0.30);
+
+  if (hasHighVariableIncome) {
     adjustments.push({
       name: 'Variable income >30%',
       value: RETENTION_ADJ.variableIncomeHigh,
-      reason: 'High variable income share excludes unreliable slice',
+      reason: 'More than 30% of your income varies month to month, so we use a slightly larger affordability buffer.',
     });
   }
 
@@ -143,10 +147,11 @@ export function computeSafeCapacity(
   }
 
   const totalAdj = adjustments.reduce((sum, a) => sum + a.value, 0);
-  const adjustedRetentionFactor = Math.min(
+  const rawRetention = Math.min(
     RETENTION_CAP,
     Math.max(RETENTION_FLOOR, baseRetentionFactor + totalAdj)
   );
+  const adjustedRetentionFactor = Math.round(rawRetention * 10000) / 10000;
 
   // Safe EMI (hard ceiling — never discounted further)
   const safeEMI = disposableCashFlow * adjustedRetentionFactor;
@@ -179,6 +184,7 @@ export function computeSafeCapacity(
   if (profile.essentialExpensesIsDefaulted) missingInputs.push('householdExpenses');
   if (profile.highCostDebtEMIIsDefaulted) missingInputs.push('highCostDebtMonthlyPayment');
   if (profile.existingEMIIsDefaulted) missingInputs.push('existingEMI');
+  if (profile.variableIncomeComponent === 'unknown') missingInputs.push('variableIncomeComponent');
 
   const confidence: ConfidenceLevel =
     missingInputs.length === 0 ? 'HIGH' :
@@ -198,6 +204,10 @@ export function computeSafeCapacity(
     `${baseLabel} — base retention ${(baseRetentionFactor * 100).toFixed(0)}%`,
     `Adjusted retention: ${(adjustedRetentionFactor * 100).toFixed(0)}%`,
   ];
+
+  if (profile.variableIncomeComponent === 'unknown') {
+    drivers.push('Variable income component: Not sure (unknown volatility — buffer preserved without penalty)');
+  }
 
   const explanation =
     disposableCashFlow <= 0
