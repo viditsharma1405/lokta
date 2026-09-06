@@ -7,87 +7,142 @@
 
 ---
 
-## What the Product Does
+## Product Thesis
 
-Lokta Borrower Copilot is a client-side financial copilot designed to solve the critical information asymmetry in Indian retail lending. Lenders optimize for loan size and institutional risk-return, often approving amounts that lead to payment stress or default. 
+When evaluating loan products, prospective borrowers often face significant information asymmetry regarding credit limits, pricing benchmarks, and true cash-flow affordability.
 
-Lokta answers five fundamental questions for any prospective borrower:
-1. **Should I borrow at all?** (Actionable verdict: `BORROW`, `BORROW_LESS`, or `DONT_BORROW`)
-2. **How much might a lender approve?** (Lender-likely amount based on FOIR and illustrative LTV)
-3. **How much is actually safe for my cash flow?** (Borrower-safe amount reserving a protective buffer)
-4. **What interest rate should I negotiate?** (Estimated fair rate range mapped to market product bands)
-5. **What monthly payment should I never cross?** (Safe monthly EMI ceiling)
+Lokta Borrower Copilot helps borrowers answer four fundamental questions:
+1. **Should I borrow?** (Actionable verdict: `BORROW`, `BORROW_LESS`, or `DONT_BORROW`)
+2. **How much might a lender consider?** (Simplified lender-side estimate based on repayment and collateral constraints)
+3. **How much should I safely borrow?** (Borrower-safe amount reserving protective household buffers)
+4. **What rate and EMI should I negotiate?** (Market rate benchmarks, all-in effective cost, and safe EMI limits)
 
-It synthesizes these outputs into a printable one-page **Negotiation Card** that the borrower can take into bank or NBFC branches.
+### Lender-Likely vs. Borrower-Safe Capacity
+
+A central concept in Lokta is the distinction between lender capacity and borrower safety:
+
+> *A lender-side estimate reflects a simplified view of what may be supportable under the model’s repayment and collateral constraints. Borrower-safe capacity is intentionally more conservative and includes household buffers.*
+
+While an institutional underwriting check primarily evaluates whether an obligation fits standard debt-service ratios (e.g., 50% FOIR) or collateral coverage, borrower safety focuses on whether monthly payments leave sufficient surplus for essential living expenses, healthcare, emergencies, and household resilience.
 
 ---
 
-## Core System Architecture
+## System Architecture
 
-1. **Deterministic Rules-Based Financial Engine**: Pure TypeScript calculation pipeline with zero external runtime dependencies, no network requests, no databases, and no probabilistic black-box models. Every number is explainable.
-2. **Adaptive Questionnaire**: Starts with ~8–10 core cash flow questions and branches dynamically based on employment segment (salaried, self-employed, informal), documentation evidence, high-cost debt, and collateral.
-3. **Lender-Likely vs. Borrower-Safe Distinction**: Clearly contrasts what a financial institution would lend against what a household budget can safely absorb.
-4. **Estimated Fair Rate Range & All-In Effective Cost**: Employs a deterministic 0–100 position model within observed Q1 2026 Indian benchmark bands, combined with an iterative bisection IRR root solver to compute true annualized borrowing cost (APR) including upfront processing fees.
-5. **Macro Cash-Flow Stress Testing**: Simulates dual-shock scenarios (−20% income drop and +2pp benchmark interest rate rise) to classify debt service resilience into *Comfortable*, *Tight*, *Stressed*, or *Unsustainable*.
-6. **Negotiation Card**: Provides clear, actionable walk-away numbers (maximum safe principal, target rate, fee cap, and maximum monthly EMI).
+```
+User Input
+    ↓
+Adaptive Questionnaire
+    ↓
+Borrower Profile
+    ↓
+Deterministic Rules Engine
+    ↓
+Results Dashboard
+    ↓
+Negotiation Card
+```
+
+The system is powered by a deterministic, client-side calculation pipeline:
+- **No Machine Learning (ML)**
+- **No Large Language Models (LLMs)**
+- **No Backend Server**
+- **No Database**
+- **No Credit Bureau Pull**
+- **100% Borrower-Provided Inputs**
+- **Deterministic Rules & Explainable Formulas**
+
+The rules engine includes:
+- **Lender Capacity**: Deterministic FOIR limits (50% salaried, 45%/35% self-employed, 35% informal, 60% secured) and tiered recognition of unevidenced income.
+- **Safe Capacity**: Disposable cash flow after essentials, baseline retention factors (25%–50%), and risk-adjusted buffers.
+- **Fair Rate**: Deterministic 0–100 positioning within market rate bands; unknown factors widen uncertainty rather than penalizing rates.
+- **Effective Cost**: Root-solved annualized cost (APR) factoring in upfront processing fee deductions.
+- **EMI & Static Tenure Trade-Off**: Standard amortization math comparing payments and total interest across typical tenure options.
+- **Stress Test**: Dual macro scenarios (−20% income reduction and +2pp interest rate rise) to evaluate repayment resilience.
+- **Decision Engine**: Hard stops for severe debt distress, soft signals, and actionable borrowing verdicts.
+- **Product Routing**: Automated mapping to relevant credit categories (Personal, Business, LAP, Two-Wheeler, Gold) based on loan purpose and collateral.
+
+---
+
+## Adaptive Questionnaire
+
+The questionnaire adapts dynamically based on the borrower's earning segment and circumstances:
+
+- **Salaried Borrowers**: Collects monthly take-home income, employment tenure, and variable pay (bonuses/commissions) if earnings fluctuate.
+- **Self-Employed Borrowers**: Collects monthly income, business operating tenure, documentation type (ITR, bank records, or cash), variable-income component, and relevant asset collateral or co-applicant details.
+- **Gig / Informal Borrowers**: Collects monthly income, supporting digital evidence (bank deposits or app payout statements), high-cost debt details, and variable-income component.
+
+The questionnaire asks only for single monthly income values (it does not ask for income ranges or separate lower/typical/higher bounds).
+
+---
+
+## Variable Income
+
+For self-employed and gig/informal borrowers, the questionnaire asks:
+
+> *"How much of your monthly income typically varies month to month?"*  
+> Options: `0–10%` | `10–30%` | `More than 30%` | `Not sure`
+
+A variable component above 30% triggers a modest safe-affordability buffer (−5 percentage-point retention adjustment) so that lean months are protected.
+
+> *This is a borrower-side modelling assumption, not an RBI-mandated threshold.*
+
+---
+
+## Collateral & Secured Lending
+
+For borrowers with qualifying assets (residential/commercial real estate or gold):
+
+$$\text{Collateral-Supported Amount} = \text{Borrower-Reported Collateral Value} \times \text{Illustrative LTV}$$
+
+For secured credit products:
+
+$$\text{Estimated Lender Ceiling} = \min(\text{Repayment-Capacity-Supported Amount}, \text{Collateral-Supported Amount})$$
+
+> *This is a simplified borrower-side underwriting heuristic, not a universal lender formula. Actual lender valuation and applicable LTV may differ.*
 
 ---
 
 ## Documentation Deliverables
 
-- [RULES.md](./RULES.md) — Comprehensive rule-by-rule specification with values, rationale, and provenance categorization (`| What | Value | Why | Source or my judgement |`).
-- [RUNTHROUGHS.md](./RUNTHROUGHS.md) — Complete end-to-end user journeys (Sections A through O) for Priya, Ravi, and Anita.
-- [WALKTHROUGH.md](./WALKTHROUGH.md) — 5-minute video presentation guide, suggested timeline, and realistic future roadmap.
-
----
-
-## Run Locally
-
-```bash
-# Install dependencies
-npm install
-
-# Start local development server
-npm run dev
-```
-
-Visit `http://localhost:5173` to explore the application or load pre-configured persona assessments.
-
----
-
-## Validation & Test Suite
-
-The project includes an extensive automated test suite covering regulatory math, persona baselines, edge cases, and regression verifications:
-
-```bash
-# Run test suite (369 passing tests across Persona, Edge Case, and Hardening suites)
-npm test
-
-# Run linter (oxlint)
-npm run lint
-
-# Production build & TypeScript check (tsc -b && vite build)
-npm run build
-```
-
----
-
-## Key Design Decisions
-
-- **Why No ML or LLMs?** Financial safety calculations require 100% deterministic, audit-proof arithmetic. A borrower making life-altering borrowing decisions deserves reproducible math, not non-deterministic token generation or halluncinated rates.
-- **Why No Bureau Integration?** Pulling bureau reports creates a hard inquiry that can lower a borrower's credit score. Lokta operates as a self-assessment tool before approaching lenders.
-- **Why No Login, Database, or Backend?** Complete borrower privacy. Financial details remain strictly client-side in browser memory and never leave the device.
-- **Why Are Safe and Lender Amounts Separate?** Lenders check whether a loan will default immediately under maximum debt-service limits (e.g. 50%–60% FOIR). The borrower-safe amount checks what payment leaves enough buffer for groceries, medical emergencies, and school fees. The gap between these two numbers is where financial distress begins.
-- **Why Does Unknown Information Widen Bands Instead of Penalizing?** "Unknown ≠ Bad". An unverified credit score or missing tax return should widen uncertainty (lower confidence) rather than automatically pushing rates to subprime levels.
-- **Why Does All-In Effective Cost Matter?** A nominal 12% loan with a 2% processing fee deducted upfront results in an effective APR significantly higher than the advertised headline rate.
-- **Why Use Adaptive Questions?** Salaried corporate employees, kirana store owners, and gig delivery workers have fundamentally different cash flow structures. Asking irrelevant questions adds cognitive friction without improving decision quality.
+- [RULES.md](./RULES.md) — Comprehensive rule-by-rule specification detailing formulas, values, rationale, and provenance categorization (`| What | Value | Why | Source or my judgement |`).
+- [RUNTHROUGHS.md](./RUNTHROUGHS.md) — Complete end-to-end user journeys (Sections A through O) for Priya, Ravi, and Anita reflecting the live questionnaire and exact computed outputs.
+- [WALKTHROUGH.md](./WALKTHROUGH.md) — Presentation guide, video walkthrough structure, and roadmap.
 
 ---
 
 ## Limitations
 
-1. **Self-Reported Inputs Are Not Verified**: The application evaluates self-reported figures. If entered inputs are inaccurate, the calculated capacity will reflect those inaccuracies.
-2. **Lender Underwriting Discretion**: Actual bank and NBFC underwriting criteria, credit policies, and risk-pricing matrices vary across institutions and over time.
-3. **Illustrative Collateral Valuation & LTV**: Real property and gold valuations require licensed technical appraisals and legal scrutiny. Illustrative LTV caps (70% residential, 60% commercial, tiered gold) are educational heuristics.
-4. **Market Rate Bands Are Benchmarks**: Quoted rate bands represent observed Q1 2026 Indian retail credit averages, not binding contractual quotes.
-5. **Effective Cost / APR Estimates**: Excludes state stamp duty, optional insurance premiums, GST on fees, and prepayment/foreclosure penalties that vary by lender.
+1. **Borrower-Reported Inputs**: All calculations rely on self-reported information and are not independently verified against documents or bank statements.
+2. **Self-Reported Credit Score**: The model does not pull credit bureau records; credit score ranges are entered by the user.
+3. **Market-Level Benchmark Rates**: Quoted interest rate bands represent illustrative market-level benchmarks (observed Q1 2026 Indian credit averages), not lender-specific contractual offers.
+4. **Borrower-Reported Collateral**: Collateral values are self-reported estimates. Actual lender valuation, legal title verification, and institutional LTV policies will vary.
+5. **Lender Underwriting Policies Vary**: Financial institutions apply differing internal risk matrices, debt-burden ratios, and eligibility guidelines.
+6. **Effective Borrowing Cost Scope**: Effective annualized cost calculations include nominal interest and upfront processing fees, but exclude state stamp duty, optional insurance premiums, GST on fees, and foreclosure charges.
+7. **Decision Aid, Not a Credit Approval System**: The application is a borrower-side decision support tool, not a lender credit approval engine.
+
+---
+
+## Validation
+
+The test suite covers persona scenarios, edge cases, and rule-hardening cases:
+
+```bash
+# Run test suite
+npm test
+
+# Run linter
+npm run lint
+
+# Production build & TypeScript check
+npm run build
+```
+
+---
+
+## Deployment
+
+The application is deployed as a static Single Page Application (SPA) on GitHub Pages:
+- **Live URL:** [https://viditsharma1405.github.io/lokta/](https://viditsharma1405.github.io/lokta/)
+- **Build Tool:** Vite + React + TypeScript
+- **Hosting:** GitHub Pages via GitHub Actions automated deployment
